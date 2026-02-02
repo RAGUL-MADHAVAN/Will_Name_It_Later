@@ -164,6 +164,34 @@ const validateResourceBorrow = [
   handleValidationErrors
 ];
 
+// Borrow request validation (approval flow)
+const validateBorrowRequest = [
+  body('duration')
+    .optional()
+    .isInt({ min: 1, max: 30 })
+    .withMessage('Borrow duration must be between 1 and 30 days'),
+  body('message')
+    .optional()
+    .trim()
+    .isLength({ max: 200 })
+    .withMessage('Message cannot exceed 200 characters'),
+  handleValidationErrors
+];
+
+// Borrow decision validation (approve/reject)
+const validateBorrowDecision = [
+  body('duration')
+    .optional()
+    .isInt({ min: 1, max: 30 })
+    .withMessage('Borrow duration must be between 1 and 30 days'),
+  body('message')
+    .optional()
+    .trim()
+    .isLength({ max: 200 })
+    .withMessage('Message cannot exceed 200 characters'),
+  handleValidationErrors
+];
+
 // Resource return validation
 const validateResourceReturn = [
   body('rating')
@@ -254,6 +282,8 @@ module.exports = {
   validateComplaint,
   validateResource,
   validateResourceBorrow,
+  validateBorrowRequest,
+  validateBorrowDecision,
   validateResourceReturn,
   validateComplaintFeedback,
   validatePasswordChange,

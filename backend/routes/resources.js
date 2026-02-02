@@ -3,8 +3,8 @@ const router = express.Router();
 const { protect } = require('../middleware/auth');
 const {
   validateResource,
-  validateResourceBorrow,
-  validateResourceReturn
+  validateBorrowRequest,
+  validateBorrowDecision
 } = require('../middleware/validation');
 const {
   createResource,
@@ -12,8 +12,11 @@ const {
   getResource,
   updateResource,
   deleteResource,
-  borrowResource,
-  returnResource,
+  requestBorrow,
+  approveBorrowRequest,
+  rejectBorrowRequest,
+  markResourceAvailable,
+  returnRequest,
   addToWishlist,
   removeFromWishlist,
   getUserResources,
@@ -31,9 +34,12 @@ router.get('/:id', getResource);
 router.post('/:id/wishlist', addToWishlist);
 router.delete('/:id/wishlist', removeFromWishlist);
 
-// Resource borrowing
-router.post('/:id/borrow', validateResourceBorrow, borrowResource);
-router.post('/:id/return', validateResourceReturn, returnResource);
+// Resource borrowing (approval-based)
+router.post('/:id/requests', validateBorrowRequest, requestBorrow);
+router.post('/:id/requests/:requestId/approve', validateBorrowDecision, approveBorrowRequest);
+router.post('/:id/requests/:requestId/reject', validateBorrowDecision, rejectBorrowRequest);
+router.post('/:id/return-request', returnRequest);
+router.post('/:id/mark-available', markResourceAvailable);
 
 // Resource management (only owners can update/delete)
 router.post('/', validateResource, createResource);

@@ -17,6 +17,8 @@ const ResourcesPage = () => {
   const { user } = useAuthStore()
   const [filters, setFilters] = useState({ category: '', availability: '', search: '' })
   const [showForm, setShowForm] = useState(false)
+  const [showSuccess, setShowSuccess] = useState(false)
+  const [editingId, setEditingId] = useState(null)
   const [formValues, setFormValues] = useState({
     name: '',
     description: '',
@@ -29,6 +31,17 @@ const ResourcesPage = () => {
   const { data, isLoading } = useQuery(['resources', filters], () => fetchResources(filters))
 
   const resources = data?.resources || []
+
+  const availabilityBadge = (status) => {
+    const map = {
+      available: 'bg-success-100 text-success-800 border-success-200',
+      requested: 'bg-warning-100 text-warning-800 border-warning-200',
+      borrowed: 'bg-warning-200 text-warning-900 border-warning-300',
+      maintenance: 'bg-secondary-200 text-secondary-800 border-secondary-300',
+      unavailable: 'bg-secondary-300 text-secondary-900 border-secondary-400',
+    }
+    return map[status] || 'bg-secondary-100 text-secondary-800 border-secondary-200'
+  }
 
   const wishlistMutation = useMutation((id) => api.post(`/resources/${id}/wishlist`), {
     onSuccess: () => {
@@ -43,7 +56,10 @@ const ResourcesPage = () => {
     {
       onSuccess: () => {
         toast.success('Resource added')
+        setShowSuccess(true)
+        setTimeout(() => setShowSuccess(false), 1200)
         setShowForm(false)
+        setEditingId(null)
         setFormValues({
           name: '',
           description: '',
@@ -53,9 +69,34 @@ const ResourcesPage = () => {
           imageUrl: '',
         })
         queryClient.invalidateQueries(['resources'])
+        queryClient.invalidateQueries('dashboard')
       },
       onError: (err) => {
         toast.error(err.response?.data?.message || 'Could not add resource')
+      },
+    }
+  )
+
+  const updateResourceMutation = useMutation(
+    ({ id, payload }) => api.put(`/resources/${id}`, payload),
+    {
+      onSuccess: () => {
+        toast.success('Resource updated')
+        setShowForm(false)
+        setEditingId(null)
+        setFormValues({
+          name: '',
+          description: '',
+          category: 'electronics',
+          condition: 'good',
+          availability: 'available',
+          imageUrl: '',
+        })
+        queryClient.invalidateQueries(['resources'])
+        queryClient.invalidateQueries('dashboard')
+      },
+      onError: (err) => {
+        toast.error(err.response?.data?.message || 'Could not update resource')
       },
     }
   )
@@ -65,6 +106,18 @@ const ResourcesPage = () => {
     if (!active.length) return 'All'
     return active.map(([k, v]) => `${k}: ${v}`).join(', ')
   }, [filters])
+
+  const resetForm = () => {
+    setEditingId(null)
+    setFormValues({
+      name: '',
+      description: '',
+      category: 'electronics',
+      condition: 'good',
+      availability: 'available',
+      imageUrl: '',
+    })
+  }
 
   const handleSubmit = (e) => {
     e.preventDefault()
@@ -86,7 +139,11 @@ const ResourcesPage = () => {
       roomNumber: user.roomNumber,
       images: formValues.imageUrl ? [formValues.imageUrl] : [],
     }
-    createResourceMutation.mutate(payload)
+    if (editingId) {
+      updateResourceMutation.mutate({ id: editingId, payload })
+    } else {
+      createResourceMutation.mutate(payload)
+    }
   }
 
   return (
@@ -103,12 +160,25 @@ const ResourcesPage = () => {
             <p className="text-secondary-600">Borrow and share items across the hostel community.</p>
           </div>
           <motion.button
-            whileHover={{ y: -2, boxShadow: '0 14px 30px -20px rgba(59,130,246,0.6)' }}
-            whileTap={{ scale: 0.97 }}
-            onClick={() => setShowForm(true)}
-            className="btn-primary"
+            whileHover={{ y: -2, boxShadow: '0 20px 50px -24px rgba(59,130,246,0.65)', background: 'linear-gradient(120deg, #2563eb, #22d3ee)' }}
+            whileTap={{ scale: 0.96 }}
+            onClick={() => { setEditingId(null); setShowForm(true) }}
+            className="btn-primary relative overflow-hidden"
           >
-            + Add Resource
+            <motion.span
+              initial={{ opacity: 0, scale: 0.9 }}
+              animate={{ opacity: 1, scale: 1 }}
+              transition={{ duration: 0.2 }}
+              className="relative z-10"
+            >
+              + Add Resource
+            </motion.span>
+            <motion.span
+              className="absolute inset-0 bg-white/10"
+              initial={false}
+              animate={{ opacity: showSuccess ? 0.3 : 0, scale: showSuccess ? 1.1 : 0.98 }}
+              transition={{ duration: 0.4 }}
+            />
           </motion.button>
         </div>
       </motion.div>
@@ -150,8 +220,10 @@ const ResourcesPage = () => {
         >
           <option value="">Availability: All</option>
           <option value="available">Available</option>
+          <option value="requested">Requested</option>
           <option value="borrowed">Borrowed</option>
           <option value="maintenance">Maintenance</option>
+          <option value="unavailable">Unavailable</option>
         </motion.select>
         <div className="flex items-center text-sm text-secondary-600">Active filters: {filterBadge}</div>
       </motion.div>
@@ -184,38 +256,71 @@ const ResourcesPage = () => {
             {resources.map((item, idx) => (
               <motion.div
                 key={item._id}
-                initial={{ opacity: 0, y: 12 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.22, delay: idx * 0.02 }}
-                whileHover={{ y: -6, boxShadow: '0 15px 45px -25px rgba(15,23,42,0.35)' }}
-                whileTap={{ scale: 0.995 }}
-                className="p-4 bg-white border border-secondary-100 rounded-2xl shadow-soft transition-all"
+                layout
+                initial={{ opacity: 0, y: 16, scale: 0.98 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={{ opacity: 0, y: -10 }}
+                transition={{ duration: 0.24, delay: idx * 0.02 }}
+                whileHover={{ y: -8, boxShadow: '0 25px 60px -32px rgba(15,23,42,0.45)', borderColor: 'rgba(59,130,246,0.35)' }}
+                whileTap={{ scale: 0.994 }}
+                className="p-4 bg-white border border-secondary-100 rounded-2xl shadow-soft transition-all relative overflow-hidden"
               >
-                <div className="flex items-center justify-between gap-3">
+                <motion.div
+                  className="absolute inset-0 pointer-events-none"
+                  initial={false}
+                  animate={{ opacity: 0.04 }}
+                  style={{ background: 'radial-gradient(circle at 20% 20%, rgba(59,130,246,0.25), transparent 35%), radial-gradient(circle at 80% 0%, rgba(16,185,129,0.2), transparent 28%)' }}
+                />
+                <div className="flex items-center justify-between gap-3 relative">
                   <div>
                     <p className="text-sm text-secondary-500">{item.category}</p>
                     <h3 className="text-lg font-semibold text-secondary-900">{item.name}</h3>
                   </div>
                   <motion.span
                     layout
-                    className={`badge-success capitalize ${item.availability !== 'available' ? 'bg-warning-100 text-warning-800' : ''}`}
+                    animate={{ scale: item.availability === 'available' ? 1 : 1.02 }}
+                    transition={{ duration: 0.28 }}
+                    className={`px-3 py-1 text-xs font-semibold rounded-full border capitalize ${availabilityBadge(item.availability)}`}
                   >
                     {item.availability}
                   </motion.span>
                 </div>
-                <p className="text-secondary-600 text-sm mt-2 line-clamp-3">{item.description}</p>
-                <div className="mt-3 flex items-center justify-between text-sm text-secondary-500">
+                <p className="text-secondary-600 text-sm mt-2 line-clamp-3 relative">{item.description}</p>
+                <div className="mt-3 flex items-center justify-between text-sm text-secondary-500 relative">
                   <span>{item.hostelBlock} Block • Room {item.roomNumber}</span>
                   <div className="flex gap-3">
                     <motion.button
-                      whileHover={{ scale: 1.03 }}
+                      whileHover={{ scale: 1.03, color: '#2563eb' }}
                       whileTap={{ scale: 0.97 }}
                       onClick={() => wishlistMutation.mutate(item._id)}
                       className="text-primary-600 font-semibold"
                       disabled={wishlistMutation.isLoading}
                     >
-                      Wishlist
+                      {wishlistMutation.isLoading ? 'Adding…' : 'Wishlist'}
                     </motion.button>
+                    {(item.owner === user?._id || item.owner === user?.id || item.owner?._id === user?._id || item.owner?._id === user?.id) && (
+                      <motion.button
+                        whileHover={{ scale: 1.03, color: item.availability === 'borrowed' ? '#94a3b8' : '#2563eb' }}
+                        whileTap={{ scale: 0.97 }}
+                        disabled={item.availability === 'borrowed'}
+                        onClick={() => {
+                          if (item.availability === 'borrowed') return
+                          setEditingId(item._id)
+                          setFormValues({
+                            name: item.name,
+                            description: item.description,
+                            category: item.category,
+                            condition: item.condition,
+                            availability: item.availability,
+                            imageUrl: (item.images && item.images[0]) || '',
+                          })
+                          setShowForm(true)
+                        }}
+                        className={`text-primary-600 font-semibold ${item.availability === 'borrowed' ? 'opacity-50 cursor-not-allowed' : ''}`}
+                      >
+                        Edit
+                      </motion.button>
+                    )}
                     <Link to={`/resources/${item._id}`} className="text-primary-600 font-semibold">View</Link>
                   </div>
                 </div>
@@ -243,8 +348,8 @@ const ResourcesPage = () => {
             >
               <div className="flex items-center justify-between">
                 <div>
-                  <h3 className="text-xl font-semibold text-secondary-900">Add Resource</h3>
-                  <p className="text-secondary-600 text-sm">Share an item with your hostel mates.</p>
+                  <h3 className="text-xl font-semibold text-secondary-900">{editingId ? 'Edit Resource' : 'Add Resource'}</h3>
+                  <p className="text-secondary-600 text-sm">{editingId ? 'Update details for your resource. Borrowed items cannot be edited.' : 'Share an item with your hostel mates.'}</p>
                 </div>
                 <motion.button
                   whileTap={{ scale: 0.95 }}
@@ -318,8 +423,10 @@ const ResourcesPage = () => {
                       onChange={(e) => setFormValues((p) => ({ ...p, availability: e.target.value }))}
                     >
                       <option value="available">Available</option>
+                      <option value="requested">Requested</option>
                       <option value="borrowed">Borrowed</option>
                       <option value="maintenance">Maintenance</option>
+                      <option value="unavailable">Unavailable</option>
                     </select>
                   </motion.div>
                   <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.18 }} className="space-y-2">
@@ -338,17 +445,51 @@ const ResourcesPage = () => {
                 </div>
 
                 <div className="flex gap-3 justify-end">
-                  <motion.button whileTap={{ scale: 0.97 }} type="button" className="btn-secondary" onClick={() => setShowForm(false)}>
+                  <motion.button
+                    whileTap={{ scale: 0.97 }}
+                    type="button"
+                    className="btn-secondary"
+                    onClick={() => { setShowForm(false); resetForm() }}
+                  >
                     Cancel
                   </motion.button>
                   <motion.button
                     whileHover={{ y: -1 }}
                     whileTap={{ scale: 0.97 }}
                     type="submit"
-                    className="btn-primary"
-                    disabled={createResourceMutation.isLoading}
+                    className="btn-primary relative overflow-hidden"
+                    disabled={createResourceMutation.isLoading || updateResourceMutation.isLoading || formValues.availability === 'borrowed'}
                   >
-                    {createResourceMutation.isLoading ? 'Saving…' : 'Save Resource'}
+                    <AnimatePresence mode="wait" initial={false}>
+                      {createResourceMutation.isLoading || updateResourceMutation.isLoading ? (
+                        <motion.span
+                          key="saving"
+                          initial={{ opacity: 0, y: 6 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          exit={{ opacity: 0, y: -6 }}
+                          className="relative z-10"
+                        >
+                          Saving…
+                        </motion.span>
+                      ) : (
+                        <motion.span
+                          key="save"
+                          initial={{ opacity: 0, y: 6 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          exit={{ opacity: 0, y: -6 }}
+                          className="relative z-10 flex items-center gap-2"
+                        >
+                          {editingId ? 'Update Resource' : 'Save Resource'}
+                          {showSuccess && <motion.span layoutId="resource-check" className="inline-block text-lg">✓</motion.span>}
+                        </motion.span>
+                      )}
+                    </AnimatePresence>
+                    <motion.span
+                      className="absolute inset-0 bg-white/15"
+                      initial={false}
+                      animate={{ opacity: showSuccess ? 0.25 : 0, scale: showSuccess ? 1.05 : 1 }}
+                      transition={{ duration: 0.35 }}
+                    />
                   </motion.button>
                 </div>
               </form>

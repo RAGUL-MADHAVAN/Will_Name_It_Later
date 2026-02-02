@@ -20,14 +20,37 @@ const createResource = async (req, res) => {
       isPublic
     } = req.body;
 
+    const resolvedHostelBlock = hostelBlock || req.user.hostelBlock;
+    const resolvedRoomNumber = roomNumber || req.user.roomNumber;
+
+    if (!resolvedHostelBlock || !resolvedRoomNumber) {
+      return res.status(400).json({
+        status: 'error',
+        message: 'Hostel block and room number are required to list a resource'
+      });
+    }
+
+    // Prevent duplicate listings with same name by the same owner (case-insensitive)
+    const existing = await Resource.findOne({
+      owner: req.user.id,
+      name: { $regex: `^${name}$`, $options: 'i' }
+    });
+
+    if (existing) {
+      return res.status(400).json({
+        status: 'error',
+        message: 'You already listed a resource with this name'
+      });
+    }
+
     const resource = new Resource({
       name,
       description,
       category,
       condition,
       owner: req.user.id,
-      hostelBlock,
-      roomNumber,
+      hostelBlock: resolvedHostelBlock,
+      roomNumber: resolvedRoomNumber,
       maxBorrowDuration: maxBorrowDuration || 7,
       depositRequired: depositRequired || false,
       depositAmount: depositAmount || 0,
@@ -101,6 +124,7 @@ const getResources = async (req, res) => {
     const resources = await Resource.find(filter)
       .populate('owner', 'name hostelBlock roomNumber')
       .populate('currentBorrower', 'name hostelBlock roomNumber')
+      .populate('borrowRequests.requester', 'name hostelBlock roomNumber')
       .sort(sort)
       .skip(skip)
       .limit(parseInt(limit));
@@ -133,7 +157,8 @@ const getResource = async (req, res) => {
     const resource = await Resource.findById(req.params.id)
       .populate('owner', 'name email hostelBlock roomNumber')
       .populate('currentBorrower', 'name hostelBlock roomNumber')
-      .populate('borrowHistory.borrower', 'name hostelBlock roomNumber');
+      .populate('borrowHistory.borrower', 'name hostelBlock roomNumber')
+      .populate('borrowRequests.requester', 'name hostelBlock roomNumber');
 
     if (!resource) {
       return res.status(404).json({
@@ -266,136 +291,225 @@ const deleteResource = async (req, res) => {
   }
 };
 
-// Borrow resource
-const borrowResource = async (req, res) => {
+// Borrow request: student requests, sets availability to requested
+const requestBorrow = async (req, res) => {
   try {
-    const { duration } = req.body;
+    const { duration, message } = req.body;
 
     const resource = await Resource.findById(req.params.id);
     if (!resource) {
-      return res.status(404).json({
-        status: 'error',
-        message: 'Resource not found'
-      });
+      return res.status(404).json({ status: 'error', message: 'Resource not found' });
     }
 
-    // Check if resource is available
-    if (resource.availability !== 'available') {
-      return res.status(400).json({
-        status: 'error',
-        message: 'Resource is not available for borrowing'
-      });
-    }
-
-    // Check if user is trying to borrow their own resource
     if (resource.owner.toString() === req.user.id) {
-      return res.status(400).json({
-        status: 'error',
-        message: 'You cannot borrow your own resource'
-      });
+      return res.status(400).json({ status: 'error', message: 'You cannot request your own resource' });
     }
 
-    await resource.borrow(req.user.id, duration);
+    if (!['available', 'requested'].includes(resource.availability)) {
+      return res.status(400).json({ status: 'error', message: 'Resource not available for requests' });
+    }
 
-    // Update user's total borrowed count
-    await User.findByIdAndUpdate(req.user.id, { $inc: { totalBorrowed: 1 } });
+    // Only one pending per requester per resource
+    const hasPending = resource.borrowRequests.some(
+      (r) => r.requester.toString() === req.user.id && r.status === 'pending'
+    );
+    if (hasPending) {
+      return res.status(400).json({ status: 'error', message: 'You already have a pending request' });
+    }
 
-    // Notify resource owner
+    resource.borrowRequests.push({ requester: req.user.id, message });
+    resource.availability = 'requested';
+    await resource.save();
+
     await Notification.createNotification({
       recipient: resource.owner,
-      title: 'Resource Borrowed',
-      message: `Your resource "${resource.name}" has been borrowed by ${req.user.name}.`,
+      title: 'New borrow request',
+      message: `${req.user.name} requested "${resource.name}"${message ? `: ${message}` : ''}`,
       type: 'resource',
-      category: 'borrowed',
+      category: 'borrow-request',
       priority: 'medium',
-      relatedEntity: {
-        entityType: 'resource',
-        entityId: resource._id
-      },
+      relatedEntity: { entityType: 'resource', entityId: resource._id },
       actionUrl: `/resources/${resource._id}`,
-      actionText: 'View Resource'
+      actionText: 'Review Request'
     });
 
-    // Send confirmation to borrower
-    await Notification.createNotification({
-      recipient: req.user.id,
-      title: 'Resource Borrowed Successfully',
-      message: `You have successfully borrowed "${resource.name}". Due date: ${resource.currentDueDate.toLocaleDateString()}.`,
-      type: 'resource',
-      category: 'borrowed',
-      priority: 'medium',
-      relatedEntity: {
-        entityType: 'resource',
-        entityId: resource._id
-      },
-      actionUrl: `/resources/${resource._id}`,
-      actionText: 'View Details'
-    });
-
-    res.status(200).json({
-      status: 'success',
-      message: 'Resource borrowed successfully',
-      data: { resource }
-    });
+    res.status(200).json({ status: 'success', message: 'Request submitted', data: { resource } });
   } catch (error) {
-    console.error('Borrow resource error:', error);
-    res.status(500).json({
-      status: 'error',
-      message: error.message || 'Server error while borrowing resource'
-    });
+    console.error('Request borrow error:', error);
+    res.status(500).json({ status: 'error', message: error.message || 'Server error while requesting borrow' });
   }
 };
 
-// Return resource
-const returnResource = async (req, res) => {
+// Owner approves request -> sets borrowed
+const approveBorrowRequest = async (req, res) => {
   try {
-    const { rating, feedback } = req.body;
-
-    const resource = await Resource.findById(req.params.id);
-    if (!resource) {
-      return res.status(404).json({
-        status: 'error',
-        message: 'Resource not found'
-      });
+    const { id, requestId } = req.params;
+    const { duration } = req.body;
+    const resource = await Resource.findById(id);
+    if (!resource) return res.status(404).json({ status: 'error', message: 'Resource not found' });
+    if (resource.owner.toString() !== req.user.id) {
+      return res.status(403).json({ status: 'error', message: 'Only owner can approve' });
+    }
+    if (resource.availability === 'borrowed') {
+      return res.status(400).json({ status: 'error', message: 'Resource already borrowed' });
     }
 
-    // Check if user is the current borrower
-    if (!resource.currentBorrower || resource.currentBorrower.toString() !== req.user.id) {
-      return res.status(403).json({
-        status: 'error',
-        message: 'You are not the current borrower of this resource'
-      });
+    const request = resource.borrowRequests.id(requestId);
+    if (!request || request.status !== 'pending') {
+      return res.status(400).json({ status: 'error', message: 'Request not pending' });
     }
 
-    await resource.return(rating, feedback);
+    const now = new Date();
+    const dueDate = new Date();
+    dueDate.setDate(dueDate.getDate() + (duration || resource.maxBorrowDuration));
 
-    // Notify resource owner
+    // Atomic update
+    request.status = 'approved';
+    request.decisionAt = now;
+    resource.availability = 'borrowed';
+    resource.currentBorrower = request.requester;
+    await resource.save();
+    resource.totalBorrows += 1;
+    resource.borrowHistory.push({
+      borrower: request.requester,
+      borrowedAt: now,
+      dueDate,
+      status: 'active'
+    });
+    // close other pending requests
+    resource.borrowRequests.forEach((r) => {
+      if (r._id.toString() !== requestId && r.status === 'pending') {
+        r.status = 'rejected';
+        r.decisionAt = now;
+      }
+    });
+
+    await resource.save();
+
     await Notification.createNotification({
-      recipient: resource.owner,
-      title: 'Resource Returned',
-      message: `Your resource "${resource.name}" has been returned by ${req.user.name}.`,
+      recipient: request.requester,
+      title: 'Borrow request approved',
+      message: `Your request for "${resource.name}" was approved. Due date: ${dueDate.toLocaleDateString()}.`,
       type: 'resource',
-      category: 'returned',
+      category: 'borrow-approval',
       priority: 'medium',
-      relatedEntity: {
-        entityType: 'resource',
-        entityId: resource._id
-      },
+      relatedEntity: { entityType: 'resource', entityId: resource._id },
       actionUrl: `/resources/${resource._id}`,
       actionText: 'View Resource'
     });
 
-    res.status(200).json({
-      status: 'success',
-      message: 'Resource returned successfully',
-      data: { resource }
-    });
+    res.status(200).json({ status: 'success', message: 'Request approved', data: { resource } });
   } catch (error) {
-    console.error('Return resource error:', error);
-    res.status(500).json({
-      status: 'error',
-      message: error.message || 'Server error while returning resource'
+    console.error('Approve request error:', error);
+    res.status(500).json({ status: 'error', message: error.message || 'Server error while approving request' });
+  }
+};
+
+// Owner rejects request; availability returns to available if none pending
+const rejectBorrowRequest = async (req, res) => {
+  try {
+    const { id, requestId } = req.params;
+    const resource = await Resource.findById(id);
+    if (!resource) return res.status(404).json({ status: 'error', message: 'Resource not found' });
+    if (resource.owner.toString() !== req.user.id) {
+      return res.status(403).json({ status: 'error', message: 'Only owner can reject' });
+    }
+
+    const request = resource.borrowRequests.id(requestId);
+    if (!request || request.status !== 'pending') {
+      return res.status(400).json({ status: 'error', message: 'Request not pending' });
+    }
+
+    // Atomic update
+    request.status = 'rejected';
+    request.decisionAt = new Date();
+    const hasOtherPending = resource.borrowRequests.some((r) => r.status === 'pending');
+    if (!hasOtherPending && resource.availability === 'requested') {
+      resource.availability = 'available';
+    }
+    await resource.save();
+
+    await Notification.createNotification({
+      recipient: request.requester,
+      title: 'Borrow request rejected',
+      message: `Your request for "${resource.name}" was rejected.`,
+      type: 'resource',
+      category: 'borrow-rejection',
+      priority: 'low',
+      relatedEntity: { entityType: 'resource', entityId: resource._id },
+      actionUrl: `/resources/${resource._id}`,
+      actionText: 'View Resource'
     });
+
+    res.status(200).json({ status: 'success', message: 'Request rejected', data: { resource } });
+  } catch (error) {
+    console.error('Reject request error:', error);
+    res.status(500).json({ status: 'error', message: error.message || 'Server error while rejecting request' });
+  }
+};
+
+// Owner marks resource returned/available
+const markResourceAvailable = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { rating, feedback } = req.body;
+    const resource = await Resource.findById(id);
+    if (!resource) return res.status(404).json({ status: 'error', message: 'Resource not found' });
+    if (resource.owner.toString() !== req.user.id && req.user.role !== 'admin') {
+      return res.status(403).json({ status: 'error', message: 'Only owner or admin can mark available' });
+    }
+
+    // Close active borrow
+    if (resource.currentBorrower) {
+      const active = resource.borrowHistory.find((b) => b.status === 'active');
+      if (active) {
+        active.status = 'returned';
+        active.returnedAt = new Date();
+        if (rating) active.rating = rating;
+        if (feedback) active.feedback = feedback;
+      }
+    }
+
+    resource.currentBorrower = null;
+    resource.availability = 'available';
+    await resource.save();
+
+    res.status(200).json({ status: 'success', message: 'Resource marked available', data: { resource } });
+  } catch (error) {
+    console.error('Mark available error:', error);
+    res.status(500).json({ status: 'error', message: error.message || 'Server error while marking available' });
+  }
+};
+
+// Borrower requests return (notify owner)
+const returnRequest = async (req, res) => {
+  try {
+    const resource = await Resource.findById(req.params.id);
+    if (!resource) {
+      return res.status(404).json({ status: 'error', message: 'Resource not found' });
+    }
+
+    if (resource.currentBorrower?.toString() !== req.user.id) {
+      return res.status(403).json({ status: 'error', message: 'Only current borrower can request return' });
+    }
+
+    // Notify owner
+    await Notification.createNotification({
+      recipient: resource.owner,
+      title: 'Return request',
+      message: `${req.user.name} has requested to return "${resource.name}". Please mark it available once received.`,
+      type: 'resource',
+      category: 'borrow-request',
+      priority: 'medium',
+      relatedEntity: { entityType: 'resource', entityId: resource._id },
+      actionUrl: `/resources/${resource._id}`,
+      actionText: 'Mark Available'
+    });
+
+    res.status(200).json({ status: 'success', message: 'Return request sent' });
+  } catch (error) {
+    console.error('Return request error:', error);
+    res.status(500).json({ status: 'error', message: error.message || 'Server error while requesting return' });
   }
 };
 
@@ -468,6 +582,7 @@ const getUserResources = async (req, res) => {
     const resources = await Resource.find(filter)
       .populate('owner', 'name hostelBlock roomNumber')
       .populate('currentBorrower', 'name hostelBlock roomNumber')
+      .populate('borrowRequests.requester', 'name hostelBlock roomNumber')
       .sort({ createdAt: -1 });
 
     res.status(200).json({
@@ -561,8 +676,11 @@ module.exports = {
   getResource,
   updateResource,
   deleteResource,
-  borrowResource,
-  returnResource,
+  requestBorrow,
+  approveBorrowRequest,
+  rejectBorrowRequest,
+  markResourceAvailable,
+  returnRequest,
   addToWishlist,
   removeFromWishlist,
   getUserResources,

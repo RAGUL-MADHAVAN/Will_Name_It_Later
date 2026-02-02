@@ -2,16 +2,70 @@ const Complaint = require('../models/Complaint');
 const User = require('../models/User');
 const Notification = require('../models/Notification');
 
+const computePriority = (category, createdAt, status = 'pending') => {
+  const baseMap = {
+    electrical: 'high',
+    plumbing: 'high',
+    security: 'high',
+    cleanliness: 'medium',
+    noise: 'medium',
+    furniture: 'medium',
+    other: 'medium'
+  };
+
+  let priority = baseMap[category] || 'medium';
+  const ageHours = createdAt ? (Date.now() - new Date(createdAt)) / (1000 * 60 * 60) : 0;
+
+  if (status !== 'resolved') {
+    if (ageHours > 72) priority = 'urgent';
+    else if (ageHours > 48 && priority === 'medium') priority = 'high';
+  }
+
+  return priority;
+};
+
+const formatComplaintForUser = (complaint, userId) => {
+  const obj = complaint.toObject();
+  const isOwner = obj.reportedBy && obj.reportedBy._id?.toString() === userId;
+  const maskedReporter = obj.isAnonymous && !isOwner
+    ? { _id: null, name: 'Anonymous' }
+    : obj.reportedBy;
+
+  return {
+    ...obj,
+    reportedBy: maskedReporter,
+    displayReporter: obj.isAnonymous ? (isOwner ? 'You (anonymous)' : 'Anonymous') : (obj.reportedBy?.name || 'Unknown'),
+    priority: computePriority(obj.category, obj.createdAt, obj.status),
+    isOwner
+  };
+};
+
 // Create new complaint
 const createComplaint = async (req, res) => {
   try {
-    const { title, description, category, priority, hostelBlock, roomNumber, isAnonymous, tags } = req.body;
+    const { title, description, category, hostelBlock, roomNumber, isAnonymous, tags } = req.body;
+
+    // Prevent accidental duplicates within 12 hours by same user
+    const twelveHoursAgo = new Date(Date.now() - 12 * 60 * 60 * 1000);
+    const duplicate = await Complaint.findOne({
+      reportedBy: req.user.id,
+      title: { $regex: `^${title}$`, $options: 'i' },
+      description: { $regex: `^${description}$`, $options: 'i' },
+      createdAt: { $gte: twelveHoursAgo }
+    });
+
+    if (duplicate) {
+      return res.status(400).json({
+        status: 'error',
+        message: 'A similar complaint was filed recently. Please wait before submitting again.'
+      });
+    }
 
     const complaint = new Complaint({
       title,
       description,
       category,
-      priority: priority || 'medium',
+      priority: computePriority(category, Date.now()),
       reportedBy: req.user.id,
       hostelBlock,
       roomNumber,
@@ -21,10 +75,8 @@ const createComplaint = async (req, res) => {
 
     await complaint.save();
 
-    // Populate user data for response
     await complaint.populate('reportedBy', 'name email role hostelBlock roomNumber');
 
-    // Notify wardens and admins about new complaint
     const wardensAndAdmins = await User.find({
       role: { $in: ['warden', 'admin'] },
       isActive: true
@@ -37,7 +89,7 @@ const createComplaint = async (req, res) => {
         message: `A new complaint "${title}" has been filed in ${hostelBlock} Block.`,
         type: 'complaint',
         category: 'new',
-        priority: priority === 'urgent' ? 'high' : 'medium',
+        priority: complaint.priority === 'urgent' ? 'high' : complaint.priority,
         relatedEntity: {
           entityType: 'complaint',
           entityId: complaint._id
@@ -52,13 +104,76 @@ const createComplaint = async (req, res) => {
     res.status(201).json({
       status: 'success',
       message: 'Complaint created successfully',
-      data: { complaint }
+      data: { complaint: formatComplaintForUser(complaint, req.user.id) }
     });
   } catch (error) {
     console.error('Create complaint error:', error);
     res.status(500).json({
       status: 'error',
       message: 'Server error while creating complaint'
+    });
+  }
+};
+
+// Update complaint (owner only, before resolution)
+const updateComplaint = async (req, res) => {
+  try {
+    const { title, description, category, isAnonymous } = req.body;
+
+    const complaint = await Complaint.findById(req.params.id);
+    if (!complaint) {
+      return res.status(404).json({
+        status: 'error',
+        message: 'Complaint not found'
+      });
+    }
+
+    if (complaint.reportedBy.toString() !== req.user.id) {
+      return res.status(403).json({
+        status: 'error',
+        message: 'Only the reporter can edit this complaint'
+      });
+    }
+
+    if (complaint.status === 'resolved') {
+      return res.status(400).json({
+        status: 'error',
+        message: 'Resolved complaints cannot be edited'
+      });
+    }
+
+    if (title !== undefined) {
+      if (title.trim().length < 5 || title.trim().length > 100) {
+        return res.status(400).json({ status: 'error', message: 'Title must be between 5 and 100 characters' });
+      }
+      complaint.title = title;
+    }
+
+    if (description !== undefined) {
+      if (description.trim().length < 10 || description.trim().length > 1000) {
+        return res.status(400).json({ status: 'error', message: 'Description must be between 10 and 1000 characters' });
+      }
+      complaint.description = description;
+    }
+
+    if (category) complaint.category = category;
+    if (typeof isAnonymous === 'boolean') complaint.isAnonymous = isAnonymous;
+
+    complaint.priority = computePriority(complaint.category, complaint.createdAt, complaint.status);
+
+    await complaint.save();
+    await complaint.populate('reportedBy', 'name email role hostelBlock roomNumber');
+
+    res.status(200).json({
+      status: 'success',
+      message: 'Complaint updated successfully',
+      data: { complaint: formatComplaintForUser(complaint, req.user.id) }
+    });
+  } catch (error) {
+    console.error('Update complaint error:', error);
+    res.status(500).json({
+      status: 'error',
+      message: 'Server error while updating complaint'
     });
   }
 };
@@ -87,13 +202,7 @@ const getComplaints = async (req, res) => {
     if (hostelBlock) filter.hostelBlock = hostelBlock;
     if (roomNumber) filter.roomNumber = roomNumber;
 
-    // If user is student, only show their own complaints unless not anonymous
-    if (req.user.role === 'student') {
-      filter.$or = [
-        { reportedBy: req.user.id },
-        { isAnonymous: false }
-      ];
-    }
+    // Students can see all complaints; anonymity is enforced via masking in formatComplaintForUser
 
     // Build sort
     const sort = {};
@@ -110,10 +219,12 @@ const getComplaints = async (req, res) => {
 
     const total = await Complaint.countDocuments(filter);
 
+    const mapped = complaints.map((c) => formatComplaintForUser(c, req.user.id));
+
     res.status(200).json({
       status: 'success',
       data: {
-        complaints,
+        complaints: mapped,
         pagination: {
           current: parseInt(page),
           pages: Math.ceil(total / limit),
@@ -144,19 +255,9 @@ const getComplaint = async (req, res) => {
       });
     }
 
-    // Check if user has access to this complaint
-    if (req.user.role === 'student' && 
-        complaint.reportedBy._id.toString() !== req.user.id && 
-        !complaint.isAnonymous) {
-      return res.status(403).json({
-        status: 'error',
-        message: 'Access denied to this complaint'
-      });
-    }
-
     res.status(200).json({
       status: 'success',
-      data: { complaint }
+      data: { complaint: formatComplaintForUser(complaint, req.user.id) }
     });
   } catch (error) {
     console.error('Get complaint error:', error);
@@ -182,6 +283,12 @@ const updateComplaintStatus = async (req, res) => {
 
     // Update fields
     if (status) {
+      if (!['pending', 'in-progress', 'resolved', 'rejected'].includes(status)) {
+        return res.status(400).json({
+          status: 'error',
+          message: 'Invalid status'
+        });
+      }
       complaint.status = status;
       
       // Set actual resolution time when resolved
@@ -193,6 +300,9 @@ const updateComplaintStatus = async (req, res) => {
     if (assignedTo) complaint.assignedTo = assignedTo;
     if (resolutionNotes) complaint.resolutionNotes = resolutionNotes;
     if (estimatedResolutionTime) complaint.estimatedResolutionTime = new Date(estimatedResolutionTime);
+
+    // Auto-refresh priority based on age/status
+    complaint.priority = computePriority(complaint.category, complaint.createdAt, complaint.status);
 
     await complaint.save();
     await complaint.populate('assignedTo', 'name email role');
@@ -304,7 +414,13 @@ const upvoteComplaint = async (req, res) => {
       });
     }
 
-    // Check if user has already upvoted
+    if (complaint.reportedBy.toString() === req.user.id) {
+      return res.status(400).json({
+        status: 'error',
+        message: 'You cannot upvote your own complaint'
+      });
+    }
+
     if (complaint.hasUserUpvoted(req.user.id)) {
       return res.status(400).json({
         status: 'error',
@@ -449,6 +565,7 @@ module.exports = {
   getComplaints,
   getComplaint,
   updateComplaintStatus,
+  updateComplaint,
   addComplaintFeedback,
   upvoteComplaint,
   removeUpvote,

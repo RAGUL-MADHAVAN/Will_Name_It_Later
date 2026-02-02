@@ -29,7 +29,7 @@ const notificationSchema = new mongoose.Schema({
   },
   category: {
     type: String,
-    enum: ['new', 'update', 'resolved', 'borrowed', 'returned', 'overdue', 'maintenance', 'other']
+    enum: ['new', 'update', 'resolved', 'borrowed', 'returned', 'overdue', 'maintenance', 'borrow-request', 'borrow-approval', 'borrow-rejection', 'other']
   },
   relatedEntity: {
     entityType: {

@@ -20,6 +20,8 @@ const ComplaintDetailPage = () => {
     onSuccess: () => {
       toast.success('Upvoted')
       queryClient.invalidateQueries(['complaint', id])
+      queryClient.invalidateQueries({ queryKey: ['complaints'] })
+      queryClient.invalidateQueries('dashboard')
     },
     onError: () => toast.error('Could not upvote'),
   })

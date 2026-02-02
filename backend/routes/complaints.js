@@ -11,6 +11,7 @@ const {
   getComplaint,
   updateComplaintStatus,
   addComplaintFeedback,
+  updateComplaint,
   upvoteComplaint,
   removeUpvote,
   getComplaintStats
@@ -24,6 +25,7 @@ router.post('/', validateComplaint, createComplaint);
 router.get('/', getComplaints);
 router.get('/stats', getComplaintStats);
 router.get('/:id', getComplaint);
+router.put('/:id', validateComplaint, updateComplaint);
 router.post('/:id/upvote', upvoteComplaint);
 router.delete('/:id/upvote', removeUpvote);
 

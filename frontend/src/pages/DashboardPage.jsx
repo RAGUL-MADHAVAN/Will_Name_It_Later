@@ -1,6 +1,7 @@
 import { useEffect } from 'react'
 import { useQuery } from 'react-query'
 import { motion } from 'framer-motion'
+import { useNavigate } from 'react-router-dom'
 import StatCard from '@/components/StatCard'
 import api from '@/utils/api'
 
@@ -11,6 +12,7 @@ const fetchDashboard = async () => {
 
 const DashboardPage = () => {
   const { data, isLoading, refetch } = useQuery('dashboard', fetchDashboard)
+  const navigate = useNavigate()
 
   useEffect(() => {
     refetch()
@@ -23,6 +25,16 @@ const DashboardPage = () => {
       <div className="flex flex-col gap-2">
         <h1 className="text-2xl font-bold text-secondary-900">Overview</h1>
         <p className="text-secondary-600">Track complaints, resources, and notifications at a glance.</p>
+        <div className="flex flex-wrap gap-3 mt-2">
+          <motion.button
+            whileHover={{ y: -2, boxShadow: '0 14px 40px -24px rgba(59,130,246,0.5)' }}
+            whileTap={{ scale: 0.97 }}
+            className="btn-primary"
+            onClick={() => navigate('/complaints', { state: { openComplaintForm: true } })}
+          >
+            + Raise Complaint
+          </motion.button>
+        </div>
       </div>
 
       {isLoading ? (
@@ -67,14 +79,20 @@ const DashboardPage = () => {
           </div>
           <div className="space-y-3">
             {data?.recent.complaints?.length ? (
-              data.recent.complaints.map((c) => (
-                <div key={c._id} className="p-3 rounded-xl border border-secondary-100 bg-secondary-50">
+              data.recent.complaints.map((c, idx) => (
+                <motion.div
+                  key={c._id}
+                  initial={{ opacity: 0, y: 8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.25, delay: idx * 0.03 }}
+                  className="p-3 rounded-xl border border-secondary-100 bg-secondary-50"
+                >
                   <div className="flex items-center justify-between">
                     <p className="font-semibold text-secondary-900">{c.title}</p>
                     <span className="text-xs px-2 py-1 rounded-full bg-primary-100 text-primary-700">{c.status}</span>
                   </div>
                   <p className="text-sm text-secondary-600 line-clamp-2">{c.description}</p>
-                </div>
+                </motion.div>
               ))
             ) : (
               <p className="text-secondary-500 text-sm">No complaints yet.</p>
@@ -89,14 +107,20 @@ const DashboardPage = () => {
           </div>
           <div className="space-y-3">
             {data?.recent.resources?.length ? (
-              data.recent.resources.map((r) => (
-                <div key={r._id} className="p-3 rounded-xl border border-secondary-100 bg-secondary-50">
+              data.recent.resources.map((r, idx) => (
+                <motion.div
+                  key={r._id}
+                  initial={{ opacity: 0, y: 8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.25, delay: idx * 0.03 }}
+                  className="p-3 rounded-xl border border-secondary-100 bg-secondary-50"
+                >
                   <div className="flex items-center justify-between">
                     <p className="font-semibold text-secondary-900">{r.name}</p>
                     <span className="text-xs px-2 py-1 rounded-full bg-success-100 text-success-700">{r.availability}</span>
                   </div>
                   <p className="text-sm text-secondary-600 line-clamp-2">{r.description}</p>
-                </div>
+                </motion.div>
               ))
             ) : (
               <p className="text-secondary-500 text-sm">No resources yet.</p>

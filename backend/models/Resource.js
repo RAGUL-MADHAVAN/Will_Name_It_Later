@@ -25,7 +25,7 @@ const resourceSchema = new mongoose.Schema({
   },
   availability: {
     type: String,
-    enum: ['available', 'borrowed', 'maintenance', 'unavailable'],
+    enum: ['available', 'requested', 'borrowed', 'maintenance', 'unavailable'],
     default: 'available'
   },
   owner: {
@@ -131,6 +131,13 @@ const resourceSchema = new mongoose.Schema({
       type: Date,
       default: Date.now
     }
+  }],
+  borrowRequests: [{
+    requester: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+    status: { type: String, enum: ['pending', 'approved', 'rejected'], default: 'pending' },
+    requestedAt: { type: Date, default: Date.now },
+    decisionAt: { type: Date },
+    message: { type: String, maxlength: 200 }
   }]
 }, {
   timestamps: true

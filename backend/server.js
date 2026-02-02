@@ -44,7 +44,7 @@ app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
 // Database connection
-mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/smart-hostel', {
+mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/smart_hostel', {
   useNewUrlParser: true,
   useUnifiedTopology: true,
 })
