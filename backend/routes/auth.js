@@ -17,7 +17,8 @@ const {
   getProfile,
   updateProfile,
   changePassword,
-  logout
+  logout,
+  verifyEmail
 } = require('../controllers/authController');
 
 // Rate limiting for auth endpoints
@@ -43,6 +44,7 @@ const passwordChangeLimiter = createAuthRateLimit(
 router.post('/register', registerLimiter, validateUserRegistration, register);
 router.post('/login', loginLimiter, validateUserLogin, login);
 router.post('/refresh-token', refreshToken);
+router.post('/verify-email', verifyEmail);
 
 // Protected routes
 router.get('/profile', protect, getProfile);

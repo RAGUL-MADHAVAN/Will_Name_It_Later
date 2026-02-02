@@ -1,7 +1,7 @@
 import { useState, useMemo } from 'react'
 import { useQuery, useMutation, useQueryClient } from 'react-query'
-import { Link } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
+import { Link } from 'react-router-dom'
 import { toast } from 'react-hot-toast'
 import api from '@/utils/api'
 import { useAuthStore } from '@/store/authStore'
@@ -50,13 +50,28 @@ const ResourcesPage = () => {
 
   const wishlistMutation = useMutation(
     ({ id, isWishlisted }) =>
-      isWishlisted ? api.delete(`/resources/${id}/wishlist`) : api.post(`/resources/${id}/wishlist`),
+      api[isWishlisted ? 'delete' : 'post'](`/resources/${id}/wishlist`),
     {
-      onSuccess: (_, variables) => {
-        toast.success(variables.isWishlisted ? 'Removed from wishlist' : 'Added to wishlist')
-        queryClient.invalidateQueries(['resources'])
+      onSuccess: () => {
+        queryClient.invalidateQueries('resources')
+        toast.success(isWishlisted ? 'Removed from wishlist' : 'Added to wishlist')
       },
-      onError: () => toast.error('Could not update wishlist'),
+      onError: (err) => {
+        toast.error(err.response?.data?.message || 'Wishlist update failed')
+      }
+    }
+  )
+
+  const blockMutation = useMutation(
+    ({ id, action }) => api.post(`/resources/${id}/block`, { action }),
+    {
+      onSuccess: (_, { action }) => {
+        queryClient.invalidateQueries('resources')
+        toast.success(`Resource ${action}ed`)
+      },
+      onError: (err) => {
+        toast.error(err.response?.data?.message || 'Block action failed')
+      }
     }
   )
 
@@ -347,6 +362,17 @@ const ResourcesPage = () => {
                       </motion.button>
                     )}
                     <Link to={`/resources/${item._id}`} className="text-primary-600 font-semibold">View</Link>
+                    {user?.role === 'warden' && (
+                      <motion.button
+                        whileHover={{ scale: 1.03, color: item.availability === 'unavailable' ? '#94a3b8' : '#dc2626' }}
+                        whileTap={{ scale: 0.97 }}
+                        onClick={() => blockMutation.mutate({ id: item._id, action: item.availability === 'unavailable' ? 'unblock' : 'block' })}
+                        className="font-semibold text-red-600"
+                        disabled={blockMutation.isLoading}
+                      >
+                        {blockMutation.isLoading ? '…' : item.availability === 'unavailable' ? 'Unblock' : 'Block'}
+                      </motion.button>
+                    )}
                   </div>
                 </div>
               </motion.div>

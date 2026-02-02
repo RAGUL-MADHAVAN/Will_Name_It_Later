@@ -310,7 +310,17 @@ const ComplaintsPage = () => {
                   <p className="text-secondary-600 text-sm mt-2 line-clamp-3 relative">{item.description}</p>
                   <div className="mt-3 flex items-center justify-between text-sm text-secondary-500 relative">
                     <span>{item.hostelBlock} Block • Room {item.roomNumber}</span>
-                    <Link to={`/complaints/${item._id}`} className="text-primary-600 font-semibold">View</Link>
+                    <div className="flex items-center gap-3">
+                      {user?.role === 'warden' && item.reportedBy?._id && (
+                        <Link
+                          to={`/profile/${item.reportedBy._id}`}
+                          className="text-primary-600 font-semibold"
+                        >
+                          Profile
+                        </Link>
+                      )}
+                      <Link to={`/complaints/${item._id}`} className="text-primary-600 font-semibold">View</Link>
+                    </div>
                   </div>
                 </motion.div>
               )

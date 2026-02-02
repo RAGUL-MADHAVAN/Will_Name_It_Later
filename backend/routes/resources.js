@@ -20,7 +20,8 @@ const {
   addToWishlist,
   removeFromWishlist,
   getUserResources,
-  getResourceStats
+  getResourceStats,
+  blockResource
 } = require('../controllers/resourceController');
 
 // All routes are protected
@@ -45,5 +46,8 @@ router.post('/:id/mark-available', markResourceAvailable);
 router.post('/', validateResource, createResource);
 router.put('/:id', validateResource, updateResource);
 router.delete('/:id', deleteResource);
+
+// Warden/admin resource blocking
+router.post('/:id/block', blockResource);
 
 module.exports = router;

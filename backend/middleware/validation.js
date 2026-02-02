@@ -34,8 +34,21 @@ const validateUserRegistration = [
   body('password')
     .isLength({ min: 6 })
     .withMessage('Password must be at least 6 characters long')
-    .matches(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/)
-    .withMessage('Password must contain at least one uppercase letter, one lowercase letter, and one number'),
+    .custom((value, { req }) => {
+      if (req.body.role === 'warden') {
+        const block = (req.body.hostelBlock || '').toUpperCase()
+        const expected = `Admin@hostel${block}`
+        if (value !== expected) {
+          throw new Error(`Warden initial password must be ${expected}`)
+        }
+        return true
+      }
+
+      if (!/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/.test(value)) {
+        throw new Error('Password must contain at least one uppercase letter, one lowercase letter, and one number')
+      }
+      return true
+    }),
   
   body('role')
     .optional()

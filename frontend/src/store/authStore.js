@@ -30,12 +30,14 @@ const useAuthStore = create(
           // Set default auth header
           api.defaults.headers.common['Authorization'] = `Bearer ${accessToken}`
           
-          return { success: true }
+          return { success: true, data: response.data.data }
         } catch (error) {
           set({ isLoading: false })
+          const apiError = error.response?.data
+          const firstFieldError = apiError?.errors?.[0]?.message
           return {
             success: false,
-            error: error.response?.data?.message || 'Login failed'
+            error: firstFieldError || apiError?.message || 'Login failed'
           }
         }
       },
@@ -60,9 +62,13 @@ const useAuthStore = create(
           return { success: true }
         } catch (error) {
           set({ isLoading: false })
+          const apiError = error.response?.data
+          const firstFieldError = apiError?.errors?.[0]?.message
+          const errors = apiError?.errors?.reduce((acc, error) => ({ ...acc, [error.field]: error.message }), {})
           return {
             success: false,
-            error: error.response?.data?.message || 'Registration failed'
+            error: firstFieldError || apiError?.message || 'Registration failed',
+            errors
           }
         }
       },

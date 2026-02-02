@@ -4,6 +4,9 @@ import { motion } from 'framer-motion'
 import { toast } from 'react-hot-toast'
 import { z } from 'zod'
 import { useAuthStore } from '@/store/authStore'
+import { useParams } from 'react-router-dom'
+import { useQuery } from 'react-query'
+import api from '@/utils/api'
 
 const profileSchema = z.object({
   name: z.string().min(2, 'Name required'),
@@ -14,12 +17,30 @@ const profileSchema = z.object({
 
 const ProfilePage = () => {
   const { user, updateProfile } = useAuthStore()
+  const { id } = useParams()
+  const isOwnProfile = !id || id === user?._id || id === user?.id
+
+  const { data: profileData, isLoading } = useQuery(
+    ['user-profile', id],
+    () => api.get(`/users/${id}`).then(r => r.data.data.user),
+    { enabled: !!id && !isOwnProfile }
+  )
+
+  const targetUser = isOwnProfile ? user : profileData
   const {
     register,
     handleSubmit,
     formState: { errors, isSubmitting },
     reset,
-  } = useForm({ resolver: zodResolver(profileSchema), defaultValues: user })
+  } = useForm({ resolver: zodResolver(profileSchema), defaultValues: targetUser || {} })
+
+  if (!isOwnProfile && isLoading) {
+    return <div className="text-center py-8 text-secondary-500">Loading profile...</div>
+  }
+
+  if (!isOwnProfile && !targetUser) {
+    return <div className="text-center py-8 text-secondary-500">Profile not found</div>
+  }
 
   const onSubmit = async (values) => {
     const res = await updateProfile(values)
@@ -40,19 +61,21 @@ const ProfilePage = () => {
     >
       <div>
         <h1 className="text-2xl font-bold text-secondary-900">Profile</h1>
-        <p className="text-secondary-600">Update your contact and hostel details.</p>
+        <p className="text-secondary-600">
+          {isOwnProfile ? 'Update your contact and hostel details.' : `View ${targetUser?.name || ''}'s details.`}
+        </p>
       </div>
 
       <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div className="space-y-2">
             <label className="text-sm font-semibold text-secondary-800">Full name</label>
-            <input className="input" {...register('name')} />
+            <input className={`input ${!isOwnProfile ? 'bg-secondary-50' : ''}`} {...register('name')} disabled={!isOwnProfile} />
             {errors.name && <p className="text-error-500 text-sm">{errors.name.message}</p>}
           </div>
           <div className="space-y-2">
             <label className="text-sm font-semibold text-secondary-800">Phone</label>
-            <input className="input" {...register('phoneNumber')} />
+            <input className={`input ${!isOwnProfile ? 'bg-secondary-50' : ''}`} {...register('phoneNumber')} disabled={!isOwnProfile} />
             {errors.phoneNumber && <p className="text-error-500 text-sm">{errors.phoneNumber.message}</p>}
           </div>
         </div>
@@ -60,7 +83,7 @@ const ProfilePage = () => {
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div className="space-y-2">
             <label className="text-sm font-semibold text-secondary-800">Hostel Block</label>
-            <select className="input" {...register('hostelBlock')} defaultValue={user?.hostelBlock}>
+            <select className={`input ${!isOwnProfile ? 'bg-secondary-50' : ''}`} {...register('hostelBlock')} defaultValue={targetUser?.hostelBlock} disabled={!isOwnProfile}>
               <option value="A">Block A</option>
               <option value="B">Block B</option>
               <option value="C">Block C</option>
@@ -70,18 +93,20 @@ const ProfilePage = () => {
           </div>
           <div className="space-y-2">
             <label className="text-sm font-semibold text-secondary-800">Room Number</label>
-            <input className="input" {...register('roomNumber')} />
+            <input className={`input ${!isOwnProfile ? 'bg-secondary-50' : ''}`} {...register('roomNumber')} disabled={!isOwnProfile} />
             {errors.roomNumber && <p className="text-error-500 text-sm">{errors.roomNumber.message}</p>}
           </div>
         </div>
 
-        <button
-          type="submit"
-          disabled={isSubmitting}
-          className="btn-primary"
-        >
-          {isSubmitting ? 'Saving…' : 'Save changes'}
-        </button>
+        {isOwnProfile && (
+          <button
+            type="submit"
+            disabled={isSubmitting}
+            className="btn-primary"
+          >
+            {isSubmitting ? 'Updating…' : 'Update Profile'}
+          </button>
+        )}
       </form>
     </motion.div>
   )

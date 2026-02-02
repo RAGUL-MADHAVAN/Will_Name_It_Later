@@ -665,24 +665,59 @@ const getResourceStats = async (req, res) => {
     console.error('Get resource stats error:', error);
     res.status(500).json({
       status: 'error',
-      message: 'Server error while fetching resource statistics'
+      message: 'Server error while fetching resource stats'
     });
   }
 };
 
+// Block/Unblock a resource (warden/admin only)
+const blockResource = async (req, res) => {
+  try {
+    const { action } = req.body // 'block' or 'unblock'
+    const resource = await Resource.findById(req.params.id)
+
+    if (!resource) {
+      return res.status(404).json({ status: 'error', message: 'Resource not found' })
+    }
+
+    // Only wardens/admins can block/unblock
+    if (!['warden', 'admin'].includes(req.user.role)) {
+      return res.status(403).json({ status: 'error', message: 'Access denied' })
+    }
+
+    // Wardens can only block resources in their hostel
+    if (req.user.role === 'warden' && resource.hostelBlock !== req.user.hostelBlock) {
+      return res.status(403).json({ status: 'error', message: 'You can only block resources in your hostel' })
+    }
+
+    resource.availability = action === 'block' ? 'unavailable' : 'available'
+    await resource.save()
+
+    res.status(200).json({
+      status: 'success',
+      message: `Resource ${action}ed successfully`,
+      data: { resource }
+    })
+  } catch (error) {
+    console.error('Block resource error:', error)
+    res.status(500).json({ status: 'error', message: 'Server error' })
+  }
+}
+
 module.exports = {
-  createResource,
-  getResources,
-  getResource,
-  updateResource,
-  deleteResource,
-  requestBorrow,
-  approveBorrowRequest,
-  rejectBorrowRequest,
-  markResourceAvailable,
-  returnRequest,
-  addToWishlist,
-  removeFromWishlist,
-  getUserResources,
-  getResourceStats
+createResource,
+getResources,
+getResource,
+updateResource,
+deleteResource,
+requestBorrow,
+approveBorrowRequest,
+rejectBorrowRequest,
+markResourceAvailable,
+returnRequest,
+addToWishlist,
+removeFromWishlist,
+getUserResources,
+blockResource,
+getResourceStats
 };

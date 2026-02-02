@@ -1,3 +1,4 @@
+const crypto = require('crypto');
 const User = require('../models/User');
 const Notification = require('../models/Notification');
 const { generateTokens, verifyRefreshToken } = require('../middleware/auth');
@@ -66,6 +67,30 @@ const register = async (req, res) => {
       status: 'error',
       message: 'Server error during registration'
     });
+  }
+};
+
+// Verify email by token
+const verifyEmail = async (req, res) => {
+  try {
+    const { token } = req.body;
+    if (!token) {
+      return res.status(400).json({ status: 'error', message: 'Verification token is required' });
+    }
+
+    const user = await User.findOne({ verificationToken: token });
+    if (!user) {
+      return res.status(400).json({ status: 'error', message: 'Invalid or expired verification token' });
+    }
+
+    user.isVerified = true;
+    user.verificationToken = undefined;
+    await user.save();
+
+    res.status(200).json({ status: 'success', message: 'Email verified successfully' });
+  } catch (error) {
+    console.error('Verify email error:', error);
+    res.status(500).json({ status: 'error', message: 'Server error during email verification' });
   }
 };
 
@@ -320,5 +345,6 @@ module.exports = {
   getProfile,
   updateProfile,
   changePassword,
-  logout
+  logout,
+  verifyEmail
 };

@@ -195,6 +195,11 @@ const getComplaints = async (req, res) => {
 
     // Build filter
     const filter = {};
+
+    // Wardens only see complaints from their hostel
+    if (req.user.role === 'warden') {
+      filter.hostelBlock = req.user.hostelBlock;
+    }
     
     if (status) filter.status = status;
     if (category) filter.category = category;

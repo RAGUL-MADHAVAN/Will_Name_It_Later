@@ -95,8 +95,7 @@ userSchema.methods.comparePassword = async function(candidatePassword) {
 
 // Update last login
 userSchema.methods.updateLastLogin = function() {
-  this.lastLogin = new Date();
-  return this.save();
+  return this.updateOne({ lastLogin: new Date() });
 };
 
 // Get user stats
