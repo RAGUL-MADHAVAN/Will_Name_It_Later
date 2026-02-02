@@ -16,6 +16,7 @@ const ResourcesPage = () => {
   const queryClient = useQueryClient()
   const { user } = useAuthStore()
   const [filters, setFilters] = useState({ category: '', availability: '', search: '' })
+  const [wishlistOnly, setWishlistOnly] = useState(false)
   const [showForm, setShowForm] = useState(false)
   const [showSuccess, setShowSuccess] = useState(false)
   const [editingId, setEditingId] = useState(null)
@@ -31,6 +32,10 @@ const ResourcesPage = () => {
   const { data, isLoading } = useQuery(['resources', filters], () => fetchResources(filters))
 
   const resources = data?.resources || []
+  const userId = user?._id || user?.id
+  const displayedResources = wishlistOnly
+    ? resources.filter((item) => (item.wishlist || []).some((w) => (w.user?._id || w.user || '').toString() === (userId || '').toString()))
+    : resources
 
   const availabilityBadge = (status) => {
     const map = {
@@ -43,13 +48,17 @@ const ResourcesPage = () => {
     return map[status] || 'bg-secondary-100 text-secondary-800 border-secondary-200'
   }
 
-  const wishlistMutation = useMutation((id) => api.post(`/resources/${id}/wishlist`), {
-    onSuccess: () => {
-      toast.success('Added to wishlist')
-      queryClient.invalidateQueries(['resources'])
-    },
-    onError: () => toast.error('Could not add to wishlist'),
-  })
+  const wishlistMutation = useMutation(
+    ({ id, isWishlisted }) =>
+      isWishlisted ? api.delete(`/resources/${id}/wishlist`) : api.post(`/resources/${id}/wishlist`),
+    {
+      onSuccess: (_, variables) => {
+        toast.success(variables.isWishlisted ? 'Removed from wishlist' : 'Added to wishlist')
+        queryClient.invalidateQueries(['resources'])
+      },
+      onError: () => toast.error('Could not update wishlist'),
+    }
+  )
 
   const createResourceMutation = useMutation(
     (payload) => api.post('/resources', payload),
@@ -225,7 +234,16 @@ const ResourcesPage = () => {
           <option value="maintenance">Maintenance</option>
           <option value="unavailable">Unavailable</option>
         </motion.select>
-        <div className="flex items-center text-sm text-secondary-600">Active filters: {filterBadge}</div>
+        <div className="flex items-center justify-between text-sm text-secondary-600">
+          <span>Active filters: {filterBadge}</span>
+          <button
+            type="button"
+            onClick={() => setWishlistOnly((p) => !p)}
+            className={`px-3 py-2 rounded-lg border text-sm font-semibold transition ${wishlistOnly ? 'bg-primary-100 text-primary-700 border-primary-200' : 'bg-white text-secondary-700 border-secondary-200'}`}
+          >
+            {wishlistOnly ? 'Show All' : 'Show Wishlist Only'}
+          </button>
+        </div>
       </motion.div>
 
       {isLoading ? (
@@ -243,17 +261,17 @@ const ResourcesPage = () => {
       ) : (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
           <AnimatePresence>
-            {resources.length === 0 && (
+            {displayedResources.length === 0 && (
               <motion.p
                 initial={{ opacity: 0, y: 8 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -8 }}
                 className="text-secondary-500"
               >
-                No resources found. Try adjusting filters.
+                No resources found. Try adjusting filters{wishlistOnly ? ' or turn off wishlist filter.' : ''}
               </motion.p>
             )}
-            {resources.map((item, idx) => (
+            {displayedResources.map((item, idx) => (
               <motion.div
                 key={item._id}
                 layout
@@ -289,15 +307,22 @@ const ResourcesPage = () => {
                 <div className="mt-3 flex items-center justify-between text-sm text-secondary-500 relative">
                   <span>{item.hostelBlock} Block • Room {item.roomNumber}</span>
                   <div className="flex gap-3">
-                    <motion.button
-                      whileHover={{ scale: 1.03, color: '#2563eb' }}
-                      whileTap={{ scale: 0.97 }}
-                      onClick={() => wishlistMutation.mutate(item._id)}
-                      className="text-primary-600 font-semibold"
-                      disabled={wishlistMutation.isLoading}
-                    >
-                      {wishlistMutation.isLoading ? 'Adding…' : 'Wishlist'}
-                    </motion.button>
+                    {(() => {
+                      const isWishlisted = (item.wishlist || []).some(
+                        (w) => ((w.user?._id || w.user || '').toString() === (userId || '').toString())
+                      )
+                      return (
+                        <motion.button
+                          whileHover={{ scale: 1.03, color: '#2563eb' }}
+                          whileTap={{ scale: 0.97 }}
+                          onClick={() => wishlistMutation.mutate({ id: item._id, isWishlisted })}
+                          className={`font-semibold ${isWishlisted ? 'text-secondary-600' : 'text-primary-600'}`}
+                          disabled={wishlistMutation.isLoading}
+                        >
+                          {wishlistMutation.isLoading ? (isWishlisted ? 'Removing…' : 'Adding…') : isWishlisted ? 'Wishlisted' : 'Wishlist'}
+                        </motion.button>
+                      )
+                    })()}
                     {(item.owner === user?._id || item.owner === user?.id || item.owner?._id === user?._id || item.owner?._id === user?.id) && (
                       <motion.button
                         whileHover={{ scale: 1.03, color: item.availability === 'borrowed' ? '#94a3b8' : '#2563eb' }}

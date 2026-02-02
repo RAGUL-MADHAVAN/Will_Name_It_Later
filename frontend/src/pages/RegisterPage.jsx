@@ -7,19 +7,53 @@ import { toast } from 'react-hot-toast'
 import { z } from 'zod'
 import { useAuthStore } from '@/store/authStore'
 
+/* =======================
+   VALIDATION SCHEMA
+======================= */
+
 const registerSchema = z.object({
-  name: z.string().min(2, 'Name is required'),
-  email: z.string().email({ message: 'Enter a valid email' }),
-  phoneNumber: z.string().regex(/^[6-9]\d{9}$/g, 'Enter a valid 10-digit phone'),
-  hostelBlock: z.enum(['A', 'B', 'C', 'D'], { errorMap: () => ({ message: 'Select a block' }) }),
-  roomNumber: z.string().regex(/^[A-Z]\d{3}$/g, 'Format like A101'),
+  name: z
+    .string()
+    .nonempty('Name is required')
+    .min(2, 'Name must be at least 2 characters')
+    .regex(/^[A-Za-z ]+$/, 'Only letters allowed'),
+
+  email: z
+    .string()
+    .nonempty('Email is required')
+    .email('Enter a valid email'),
+
+  phoneNumber: z
+    .string()
+    .nonempty('Phone number is required')
+    .regex(/^[6-9]\d{9}$/, 'Enter valid 10-digit number'),
+
+  hostelBlock: z.enum(['A', 'B', 'C', 'D'], {
+    errorMap: () => ({ message: 'Hostel block is required' }),
+  }),
+
+  roomNumber: z
+    .string()
+    .nonempty('Room number is required')
+    .regex(/^[A-Z]\d{3}$/, 'Format like A101'),
+
   password: z
     .string()
-    .min(6, { message: 'Min 6 characters' })
-    .regex(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).{6,}$/g, 'Need upper, lower, and number'),
+    .nonempty('Password is required')
+    .min(6, 'Minimum 6 characters')
+    .regex(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/, 'Include upper, lower & number'),
 })
 
-const inputClasses = 'w-full px-4 py-3 rounded-xl border border-secondary-200 bg-white focus:ring-2 focus:ring-primary-500 focus:border-primary-500 transition-all'
+/* =======================
+   STYLES
+======================= */
+
+const inputClasses =
+  'w-full px-4 py-3 rounded-xl border border-secondary-200 bg-white focus:ring-2 focus:ring-primary-500 focus:border-primary-500 transition-all'
+
+/* =======================
+   COMPONENT
+======================= */
 
 const RegisterPage = () => {
   const navigate = useNavigate()
@@ -29,8 +63,12 @@ const RegisterPage = () => {
   const {
     register,
     handleSubmit,
-    formState: { errors },
-  } = useForm({ resolver: zodResolver(registerSchema) })
+    formState: { errors, isValid },
+  } = useForm({
+    resolver: zodResolver(registerSchema),
+    mode: 'onChange',
+    reValidateMode: 'onChange',
+  })
 
   const onSubmit = async (values) => {
     setIsSubmitting(true)
@@ -45,120 +83,121 @@ const RegisterPage = () => {
     }
   }
 
+  const Required = () => <span className="text-error-500">*</span>
+
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-primary-50 via-white to-secondary-50 px-4 py-10">
       <motion.div
         initial={{ opacity: 0, y: 16 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.4, ease: 'easeOut' }}
-        className="w-full max-w-5xl grid grid-cols-1 lg:grid-cols-2 gap-8 bg-white/80 backdrop-blur shadow-strong rounded-3xl p-6 md:p-10 border border-secondary-100"
+        transition={{ duration: 0.4 }}
+        className="w-full max-w-5xl grid grid-cols-1 lg:grid-cols-2 gap-8 bg-white rounded-3xl p-6 md:p-10 border"
       >
+        {/* LEFT INFO */}
         <div className="space-y-4">
-          <p className="text-sm uppercase tracking-wide text-primary-600 font-semibold">Create account</p>
-          <h1 className="text-3xl md:text-4xl font-bold text-secondary-900 leading-tight">
-            Join Smart Hostel
-            <span className="text-primary-600"> to manage & share</span>
+          <h1 className="text-3xl font-bold">
+            Join Smart Hostel <span className="text-primary-600">today</span>
           </h1>
-          <p className="text-secondary-600">Report issues, borrow items, and stay updated with animated clarity.</p>
-          <div className="grid grid-cols-2 gap-3 text-sm text-secondary-700">
-            <div className="p-3 rounded-xl bg-primary-50 border border-primary-100 shadow-soft">Live tracking</div>
-            <div className="p-3 rounded-xl bg-secondary-50 border border-secondary-100 shadow-soft">Resource sharing</div>
-            <div className="p-3 rounded-xl bg-success-50 border border-success-100 shadow-soft">Warden updates</div>
-            <div className="p-3 rounded-xl bg-warning-50 border border-warning-100 shadow-soft">Animated UX</div>
-          </div>
+          <p className="text-secondary-600">
+            Report issues, borrow items, and stay connected.
+          </p>
         </div>
 
-        <form onSubmit={handleSubmit(onSubmit)} className="bg-white rounded-2xl border border-secondary-100 shadow-soft p-6 space-y-5">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <label className="text-sm font-semibold text-secondary-800">Full name</label>
+        {/* FORM */}
+        <form
+          onSubmit={handleSubmit(onSubmit)}
+          className="bg-white rounded-2xl border p-6 space-y-5"
+        >
+          <div className="grid md:grid-cols-2 gap-4">
+            <div>
+              <label>Full Name <Required /></label>
               <input
-                type="text"
-                placeholder="Alex Student"
                 {...register('name')}
-                className={`${inputClasses} ${errors.name ? 'border-error-400' : ''}`}
+                className={`${inputClasses} ${errors.name && 'border-error-400'}`}
               />
-              {errors.name && <p className="text-error-500 text-sm">{errors.name.message}</p>}
+              {errors.name && <p className="text-error-500">{errors.name.message}</p>}
             </div>
-            <div className="space-y-2">
-              <label className="text-sm font-semibold text-secondary-800">Email</label>
+
+            <div>
+              <label>Email <Required /></label>
               <input
-                type="email"
-                placeholder="you@hostel.edu"
                 {...register('email')}
-                className={`${inputClasses} ${errors.email ? 'border-error-400' : ''}`}
+                className={`${inputClasses} ${errors.email && 'border-error-400'}`}
               />
-              {errors.email && <p className="text-error-500 text-sm">{errors.email.message}</p>}
+              {errors.email && <p className="text-error-500">{errors.email.message}</p>}
             </div>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <label className="text-sm font-semibold text-secondary-800">Phone</label>
+          <div className="grid md:grid-cols-2 gap-4">
+            <div>
+              <label>Phone <Required /></label>
               <input
-                type="tel"
-                placeholder="9876543210"
                 {...register('phoneNumber')}
-                className={`${inputClasses} ${errors.phoneNumber ? 'border-error-400' : ''}`}
+                className={`${inputClasses} ${errors.phoneNumber && 'border-error-400'}`}
               />
-              {errors.phoneNumber && <p className="text-error-500 text-sm">{errors.phoneNumber.message}</p>}
+              {errors.phoneNumber && (
+                <p className="text-error-500">{errors.phoneNumber.message}</p>
+              )}
             </div>
-            <div className="space-y-2">
-              <label className="text-sm font-semibold text-secondary-800">Password</label>
+
+            <div>
+              <label>Password <Required /></label>
               <input
                 type="password"
-                placeholder="••••••••"
                 {...register('password')}
-                className={`${inputClasses} ${errors.password ? 'border-error-400' : ''}`}
+                className={`${inputClasses} ${errors.password && 'border-error-400'}`}
               />
-              {errors.password && <p className="text-error-500 text-sm">{errors.password.message}</p>}
+              {errors.password && (
+                <p className="text-error-500">{errors.password.message}</p>
+              )}
             </div>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <label className="text-sm font-semibold text-secondary-800">Hostel Block</label>
+          <div className="grid md:grid-cols-2 gap-4">
+            <div>
+              <label>Hostel Block <Required /></label>
               <select
                 {...register('hostelBlock')}
-                className={`${inputClasses} ${errors.hostelBlock ? 'border-error-400' : ''}`}
                 defaultValue=""
+                className={`${inputClasses} ${errors.hostelBlock && 'border-error-400'}`}
               >
-                <option value="" disabled>
-                  Select block
-                </option>
+                <option value="" disabled>Select block</option>
                 <option value="A">Block A</option>
                 <option value="B">Block B</option>
                 <option value="C">Block C</option>
                 <option value="D">Block D</option>
               </select>
-              {errors.hostelBlock && <p className="text-error-500 text-sm">{errors.hostelBlock.message}</p>}
+              {errors.hostelBlock && (
+                <p className="text-error-500">{errors.hostelBlock.message}</p>
+              )}
             </div>
-            <div className="space-y-2">
-              <label className="text-sm font-semibold text-secondary-800">Room Number</label>
+
+            <div>
+              <label>Room Number <Required /></label>
               <input
-                type="text"
-                placeholder="A101"
                 {...register('roomNumber')}
-                className={`${inputClasses} ${errors.roomNumber ? 'border-error-400' : ''}`}
+                className={`${inputClasses} ${errors.roomNumber && 'border-error-400'}`}
               />
-              {errors.roomNumber && <p className="text-error-500 text-sm">{errors.roomNumber.message}</p>}
+              {errors.roomNumber && (
+                <p className="text-error-500">{errors.roomNumber.message}</p>
+              )}
             </div>
           </div>
 
           <button
             type="submit"
-            disabled={isSubmitting}
-            className="w-full inline-flex items-center justify-center gap-2 bg-primary-600 hover:bg-primary-700 text-white font-semibold py-3 rounded-xl shadow-soft hover:shadow-medium transition-all disabled:opacity-70"
+            disabled={!isValid || isSubmitting}
+            className="w-full bg-primary-600 text-white py-3 rounded-xl disabled:opacity-60"
           >
             {isSubmitting ? 'Creating account…' : 'Create account'}
           </button>
 
-          <div className="text-center text-sm text-secondary-600">
+          <p className="text-center text-sm">
             Already have an account?{' '}
-            <Link to="/login" className="text-primary-600 font-semibold hover:underline">
+            <Link to="/login" className="text-primary-600 font-semibold">
               Sign in
             </Link>
-          </div>
+          </p>
         </form>
       </motion.div>
     </div>

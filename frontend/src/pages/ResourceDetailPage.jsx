@@ -100,8 +100,8 @@ const ResourceDetailPage = () => {
 
   const isOwner = user?._id === data.owner?._id || user?.id === data.owner?._id
   const isBorrowed = data?.availability === 'borrowed'
-  const isCurrentBorrower = user?._id === data?.currentBorrower?._id || user?.id === data?.currentBorrower?._id
-  const activeBorrowerName = isCurrentBorrower ? 'You' : data?.currentBorrower?.name
+  const isCurrentBorrower = isBorrowed && (user?._id === data?.currentBorrower?._id || user?.id === data?.currentBorrower?._id)
+  const activeBorrowerName = isBorrowed ? (isCurrentBorrower ? 'You' : data?.currentBorrower?.name) : null
 
   return (
     <motion.div
@@ -167,7 +167,7 @@ const ResourceDetailPage = () => {
                   whileTap={{ scale: 0.97 }}
                   onClick={() => returnRequestMutation.mutate()}
                   className="btn-warning relative overflow-hidden"
-                  disabled={returnRequestMutation.isLoading}
+                  disabled={returnRequestMutation.isLoading || !isBorrowed}
                 >
                   <AnimatePresence mode="wait" initial={false}>
                     {returnRequestMutation.isLoading ? (
