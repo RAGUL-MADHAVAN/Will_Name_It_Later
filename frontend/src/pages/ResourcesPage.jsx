@@ -284,119 +284,137 @@ const ResourcesPage = () => {
         <div className="flex items-center justify-between gap-3 flex-wrap">
           <div>
             <h1 className="text-2xl font-bold text-secondary-900">Resources</h1>
-            <p className="text-secondary-600">Borrow and share items across the hostel community.</p>
+            <p className="text-secondary-600">
+              Borrow and share items across the hostel community.
+            </p>
           </div>
-          <motion.button
-            whileHover={{ y: -2, boxShadow: '0 20px 50px -24px rgba(59,130,246,0.65)', background: 'linear-gradient(120deg, #2563eb, #22d3ee)' }}
-            whileTap={{ scale: 0.96 }}
-            onClick={() => { resetForm(); setShowForm(true) }}
-            className="btn-primary relative overflow-hidden"
-          >
-            <motion.span
-              initial={{ opacity: 0, scale: 0.9 }}
-              animate={{ opacity: 1, scale: 1 }}
-              transition={{ duration: 0.2 }}
-              className="relative z-10"
-            >
-              + Add Resource
-            </motion.span>
-            <motion.span
-              className="absolute inset-0 bg-white/10"
-              initial={false}
-              animate={{ opacity: showSuccess ? 0.3 : 0, scale: showSuccess ? 1.1 : 0.98 }}
-              transition={{ duration: 0.4 }}
-            />
-          </motion.button>
 
-          <motion.button
-            whileHover={{ y: -2, boxShadow: '0 14px 30px -20px rgba(59,130,246,0.35)' }}
-            whileTap={{ scale: 0.97 }}
-            onClick={() => setShowRequestForm(true)}
-            className="btn-secondary"
-          >
-            + Request Item
-          </motion.button>
+          <div className="flex items-center gap-3">
+            <motion.button
+              whileHover={{ y: -2, boxShadow: '0 20px 50px -24px rgba(59,130,246,0.65)', background: 'linear-gradient(120deg, #2563eb, #38bdf8)' }}
+              whileTap={{ scale: 0.96 }}
+              onClick={() => { resetForm(); setShowForm(true) }}
+              className="btn-primary relative overflow-hidden"
+            >
+              <motion.span className="relative z-10">
+                + Add Resource
+              </motion.span>
+              <motion.span className="absolute inset-0 bg-white/10" />
+            </motion.button>
+
+            <motion.button
+              whileHover={{ y: -2, boxShadow: '0 14px 30px -20px rgba(59,130,246,0.35)' }}
+              whileTap={{ scale: 0.97 }}
+              transition={{ type: 'spring', stiffness: 300, damping: 20 }}
+              onClick={() => setShowRequestForm(true)}
+              className="btn-secondary"
+            >
+              + Request Item
+            </motion.button>
+
+          </div>
         </div>
+
       </motion.div>
 
       <motion.div
         initial={{ opacity: 0, y: 12 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.25, delay: 0.05, ease: 'easeOut' }}
-        className="grid grid-cols-1 md:grid-cols-4 gap-3 bg-white border border-secondary-100 p-4 rounded-2xl shadow-soft"
+        className="bg-white border border-secondary-100 p-4 rounded-2xl shadow-soft space-y-4"
       >
-        <motion.input
-          whileFocus={{ scale: 1.01, boxShadow: '0 8px 30px -20px rgba(59,130,246,0.45)' }}
-          transition={{ type: 'spring', stiffness: 260, damping: 20 }}
-          className="input"
-          placeholder="Search by name or tag"
-          value={filters.search}
-          onChange={(e) => setFilters((p) => ({ ...p, search: e.target.value }))}
-        />
-        <motion.select
-          whileFocus={{ scale: 1.01, boxShadow: '0 8px 30px -20px rgba(59,130,246,0.45)' }}
-          className="input"
-          value={filters.category}
-          onChange={(e) => setFilters((p) => ({ ...p, category: e.target.value }))}
-        >
-          <option value="">Category: All</option>
-          <option value="electronics">Electronics</option>
-          <option value="books">Books</option>
-          <option value="sports">Sports</option>
-          <option value="kitchen">Kitchen</option>
-          <option value="tools">Tools</option>
-          <option value="study-materials">Study materials</option>
-          <option value="other">Other</option>
-        </motion.select>
-        <motion.select
-          whileFocus={{ scale: 1.01, boxShadow: '0 8px 30px -20px rgba(59,130,246,0.45)' }}
-          className="input"
-          value={filters.availability}
-          onChange={(e) => setFilters((p) => ({ ...p, availability: e.target.value }))}
-        >
-          <option value="available">Available</option>
-          <option value="requested">Requested</option>
-          <option value="borrowed">Borrowed</option>
-          <option value="maintenance">Maintenance</option>
-          <option value="unavailable">Unavailable</option>
-        </motion.select>
-        <div className="flex items-center justify-between text-sm text-secondary-600 gap-3">
+        {/* Filters row */}
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+          <motion.input
+            whileFocus={{ scale: 1.01 }}
+            className="input"
+            placeholder="Search by name or tag"
+            value={filters.search}
+            onChange={(e) => setFilters(p => ({ ...p, search: e.target.value }))}
+          />
+
+          <motion.select
+            className="input"
+            value={filters.category}
+            onChange={(e) => setFilters(p => ({ ...p, category: e.target.value }))}
+          >
+            <option value="">Category: All</option>
+            <option value="electronics">Electronics</option>
+            <option value="books">Books</option>
+            <option value="sports">Sports</option>
+            <option value="kitchen">Kitchen</option>
+            <option value="tools">Tools</option>
+            <option value="study-materials">Study materials</option>
+            <option value="other">Other</option>
+          </motion.select>
+
+          <motion.select
+            className="input"
+            value={filters.availability}
+            onChange={(e) => setFilters(p => ({ ...p, availability: e.target.value }))}
+          >
+            <option value="">Availability: All</option>
+            <option value="available">Available</option>
+            <option value="requested">Requested</option>
+            <option value="borrowed">Borrowed</option>
+            <option value="maintenance">Maintenance</option>
+            <option value="unavailable">Unavailable</option>
+          </motion.select>
+
+          {/* Empty spacer to keep grid balanced */}
+          <div />
+        </div>
+
+        {/* Controls row */}
+        <div className="flex flex-wrap items-center justify-between gap-3 text-sm text-secondary-600">
           <div className="flex items-center gap-3 flex-wrap">
-            <span>Active filters: {filterBadge}</span>
-            <div className="flex items-center rounded-lg border border-secondary-200 overflow-hidden">
+            <span className="whitespace-nowrap">
+              Active filters: {filterBadge}
+            </span>
+
+            <div className="flex rounded-lg border border-secondary-200 overflow-hidden">
               <button
-                type="button"
-                onClick={() => {
-                  setListMode('others')
-                }}
-                className={`px-3 py-2 text-sm font-semibold transition ${listMode === 'others' ? 'bg-primary-100 text-primary-700' : 'bg-white text-secondary-700'}`}
+                onClick={() => setListMode('others')}
+                className={`px-3 py-2 font-semibold transition ${
+                  listMode === 'others'
+                    ? 'bg-primary-100 text-primary-700'
+                    : 'bg-white text-secondary-700'
+                }`}
               >
-                Others' Listings
+                Others
               </button>
+
               <button
-                type="button"
                 onClick={() => {
                   setListMode('mine')
                   setWishlistOnly(false)
                 }}
-                className={`px-3 py-2 text-sm font-semibold transition border-l border-secondary-200 ${listMode === 'mine' ? 'bg-primary-100 text-primary-700' : 'bg-white text-secondary-700'}`}
+                className={`px-3 py-2 font-semibold transition border-l border-secondary-200 ${
+                  listMode === 'mine'
+                    ? 'bg-primary-100 text-primary-700'
+                    : 'bg-white text-secondary-700'
+                }`}
               >
-                My Listings
+                Mine
               </button>
             </div>
           </div>
 
           {listMode === 'others' && (
             <button
-              type="button"
-              onClick={() => setWishlistOnly((p) => !p)}
-              className={`px-3 py-2 rounded-lg border text-sm font-semibold transition ${wishlistOnly ? 'bg-primary-100 text-primary-700 border-primary-200' : 'bg-white text-secondary-700 border-secondary-200'}`}
+              onClick={() => setWishlistOnly(p => !p)}
+              className={`px-3 py-2 rounded-lg border font-semibold transition ${
+                wishlistOnly
+                  ? 'bg-primary-100 text-primary-700 border-primary-200'
+                  : 'bg-white text-secondary-700 border-secondary-200'
+              }`}
             >
-              {wishlistOnly ? 'Show All' : 'Show Wishlist Only'}
+              {wishlistOnly ? 'Show All' : 'Wishlist'}
             </button>
           )}
         </div>
       </motion.div>
+
 
       {isLoading ? (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
@@ -596,7 +614,7 @@ const ResourcesPage = () => {
       <AnimatePresence>
         {showForm && (
           <motion.div
-            className="fixed inset-0 z-30 bg-black/30 backdrop-blur-sm flex items-center justify-center px-4"
+            className="fixed inset-0 z-30 bg-black/30 backdrop-blur-sm flex items-start md:items-center justify-center px-4 py-6 md:py-0 overflow-y-auto"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
@@ -749,7 +767,7 @@ const ResourcesPage = () => {
       <AnimatePresence>
         {showRequestForm && (
           <motion.div
-            className="fixed inset-0 z-30 bg-black/30 backdrop-blur-sm flex items-center justify-center px-4"
+            className="fixed inset-0 z-30 bg-black/30 backdrop-blur-sm flex items-start md:items-center justify-center px-4 py-6 md:py-0 overflow-y-auto"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
@@ -839,7 +857,7 @@ const ResourcesPage = () => {
       <AnimatePresence>
         {showFulfillForm && selectedRequest && (
           <motion.div
-            className="fixed inset-0 z-30 bg-black/30 backdrop-blur-sm flex items-center justify-center px-4"
+            className="fixed inset-0 z-30 bg-black/30 backdrop-blur-sm flex items-start md:items-center justify-center px-4 py-6 md:py-0 overflow-y-auto"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}

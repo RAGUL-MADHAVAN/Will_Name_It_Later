@@ -322,7 +322,7 @@ const ComplaintsPage = () => {
       <AnimatePresence>
         {showForm && (
           <motion.div
-            className="fixed inset-0 z-30 bg-black/30 backdrop-blur-sm flex items-center justify-center px-4"
+            className="fixed inset-0 z-30 bg-black/30 backdrop-blur-sm flex items-start md:items-center justify-center px-4 py-6 md:py-0 overflow-y-auto"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
