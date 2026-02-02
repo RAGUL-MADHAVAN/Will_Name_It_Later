@@ -102,6 +102,7 @@ const ResourceDetailPage = () => {
   const isBorrowed = data?.availability === 'borrowed'
   const isCurrentBorrower = isBorrowed && (user?._id === data?.currentBorrower?._id || user?.id === data?.currentBorrower?._id)
   const activeBorrowerName = isBorrowed ? (isCurrentBorrower ? 'You' : data?.currentBorrower?.name) : null
+  const returnRequested = !!data?.returnRequest?.requester
 
   return (
     <motion.div
@@ -167,13 +168,13 @@ const ResourceDetailPage = () => {
                   whileTap={{ scale: 0.97 }}
                   onClick={() => returnRequestMutation.mutate()}
                   className="btn-warning relative overflow-hidden"
-                  disabled={returnRequestMutation.isLoading || !isBorrowed}
+                  disabled={returnRequestMutation.isLoading || !isBorrowed || returnRequested}
                 >
                   <AnimatePresence mode="wait" initial={false}>
                     {returnRequestMutation.isLoading ? (
                       <motion.span key="ret-loading" initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6 }} className="relative z-10">Requesting Return…</motion.span>
                     ) : (
-                      <motion.span key="ret-text" initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6 }} className="relative z-10">Request Return</motion.span>
+                      <motion.span key="ret-text" initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6 }} className="relative z-10">{returnRequested ? 'Return Requested' : 'Request Return'}</motion.span>
                     )}
                   </AnimatePresence>
                 </motion.button>
@@ -199,6 +200,17 @@ const ResourceDetailPage = () => {
           </AnimatePresence>
           <motion.button whileTap={{ scale: 0.97 }} onClick={() => navigate(-1)} className="btn-secondary">Back</motion.button>
         </div>
+
+        {isOwner && isBorrowed && returnRequested && (
+          <div className="p-3 rounded-xl border border-warning-200 bg-warning-50">
+            <p className="text-sm font-semibold text-secondary-900">Return requested</p>
+            <p className="text-sm text-secondary-600 mt-1">
+              {data?.returnRequest?.requester?.name || 'Borrower'}
+              {data?.returnRequest?.requester?.hostelBlock ? ` • ${data.returnRequest.requester.hostelBlock} Block • Room ${data.returnRequest.requester.roomNumber}` : ''}
+              {data?.returnRequest?.requestedAt ? ` • ${new Date(data.returnRequest.requestedAt).toLocaleString()}` : ''}
+            </p>
+          </div>
+        )}
 
         {isBorrowed && activeBorrowerName && (
           <div className="text-sm text-secondary-600">Currently borrowed by {activeBorrowerName}</div>

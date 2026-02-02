@@ -138,7 +138,11 @@ const resourceSchema = new mongoose.Schema({
     requestedAt: { type: Date, default: Date.now },
     decisionAt: { type: Date },
     message: { type: String, maxlength: 200 }
-  }]
+  }],
+  returnRequest: {
+    requester: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+    requestedAt: { type: Date }
+  }
 }, {
   timestamps: true
 });

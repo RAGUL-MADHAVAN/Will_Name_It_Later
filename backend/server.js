@@ -13,6 +13,7 @@ dotenv.config();
 const authRoutes = require('./routes/auth');
 const complaintRoutes = require('./routes/complaints');
 const resourceRoutes = require('./routes/resources');
+const resourceRequestRoutes = require('./routes/resourceRequests');
 const userRoutes = require('./routes/users');
 const notificationRoutes = require('./routes/notifications');
 
@@ -55,6 +56,7 @@ mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/smart_hos
 app.use('/api/auth', authRoutes);
 app.use('/api/complaints', complaintRoutes);
 app.use('/api/resources', resourceRoutes);
+app.use('/api/resource-requests', resourceRequestRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/notifications', notificationRoutes);
 

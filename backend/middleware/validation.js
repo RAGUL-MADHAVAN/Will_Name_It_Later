@@ -70,6 +70,49 @@ const validateUserRegistration = [
   handleValidationErrors
 ];
 
+const validateResourceRequest = [
+  body('title')
+    .trim()
+    .isLength({ min: 3, max: 100 })
+    .withMessage('Title must be between 3 and 100 characters'),
+
+  body('description')
+    .trim()
+    .isLength({ min: 10, max: 1000 })
+    .withMessage('Description must be between 10 and 1000 characters'),
+
+  body('category')
+    .isIn(['electronics', 'books', 'sports', 'kitchen', 'tools', 'study-materials', 'other'])
+    .withMessage('Invalid request category'),
+
+  handleValidationErrors
+];
+
+const validateFulfillResourceRequest = [
+  body('title')
+    .optional({ nullable: true })
+    .trim()
+    .isLength({ min: 3, max: 100 })
+    .withMessage('Title must be between 3 and 100 characters'),
+
+  body('description')
+    .optional({ nullable: true })
+    .trim()
+    .isLength({ min: 10, max: 1000 })
+    .withMessage('Description must be between 10 and 1000 characters'),
+
+  body('condition')
+    .isIn(['excellent', 'good', 'fair', 'poor'])
+    .withMessage('Condition must be excellent, good, fair, or poor'),
+
+  body('imageUrl')
+    .optional({ nullable: true })
+    .isString()
+    .withMessage('imageUrl must be a string'),
+
+  handleValidationErrors
+];
+
 // User login validation
 const validateUserLogin = [
   body('email')
@@ -302,5 +345,7 @@ module.exports = {
   validatePasswordChange,
   validatePasswordReset,
   validateProfileUpdate,
+  validateResourceRequest,
+  validateFulfillResourceRequest,
   handleValidationErrors
 };
