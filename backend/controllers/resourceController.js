@@ -125,6 +125,7 @@ const getResources = async (req, res) => {
       .populate('owner', 'name hostelBlock roomNumber')
       .populate('currentBorrower', 'name hostelBlock roomNumber')
       .populate('borrowRequests.requester', 'name hostelBlock roomNumber')
+      .populate('returnRequest.requester', 'name hostelBlock roomNumber')
       .sort(sort)
       .skip(skip)
       .limit(parseInt(limit));
@@ -158,7 +159,8 @@ const getResource = async (req, res) => {
       .populate('owner', 'name email hostelBlock roomNumber')
       .populate('currentBorrower', 'name hostelBlock roomNumber')
       .populate('borrowHistory.borrower', 'name hostelBlock roomNumber')
-      .populate('borrowRequests.requester', 'name hostelBlock roomNumber');
+      .populate('borrowRequests.requester', 'name hostelBlock roomNumber')
+      .populate('returnRequest.requester', 'name hostelBlock roomNumber');
 
     if (!resource) {
       return res.status(404).json({
@@ -386,16 +388,24 @@ const approveBorrowRequest = async (req, res) => {
 
     await resource.save();
 
+    const owner = await User.findById(resource.owner).select('name hostelBlock roomNumber');
+
     await Notification.createNotification({
       recipient: request.requester,
       title: 'Borrow request approved',
-      message: `Your request for "${resource.name}" was approved. Due date: ${dueDate.toLocaleDateString()}.`,
+      sender: resource.owner,
+      message: `Your request for "${resource.name}" was approved. Pick up from ${owner?.name || 'owner'} (${owner?.hostelBlock || resource.hostelBlock} Block, Room ${owner?.roomNumber || resource.roomNumber}). Due date: ${dueDate.toLocaleDateString()}.`,
       type: 'resource',
       category: 'borrow-approval',
       priority: 'medium',
       relatedEntity: { entityType: 'resource', entityId: resource._id },
       actionUrl: `/resources/${resource._id}`,
-      actionText: 'View Resource'
+      actionText: 'View Resource',
+      metadata: {
+        holderName: owner?.name,
+        hostelBlock: owner?.hostelBlock || resource.hostelBlock,
+        roomNumber: owner?.roomNumber || resource.roomNumber
+      }
     });
 
     res.status(200).json({ status: 'success', message: 'Request approved', data: { resource } });
@@ -472,6 +482,7 @@ const markResourceAvailable = async (req, res) => {
 
     resource.currentBorrower = null;
     resource.availability = 'available';
+    resource.returnRequest = undefined;
     await resource.save();
 
     res.status(200).json({ status: 'success', message: 'Resource marked available', data: { resource } });
@@ -493,17 +504,35 @@ const returnRequest = async (req, res) => {
       return res.status(403).json({ status: 'error', message: 'Only current borrower can request return' });
     }
 
+    if (resource.returnRequest?.requester) {
+      return res.status(400).json({
+        status: 'error',
+        message: 'Return already requested'
+      });
+    }
+
+    const borrower = await User.findById(req.user.id).select('name hostelBlock roomNumber');
+
+    resource.returnRequest = { requester: req.user.id, requestedAt: new Date() };
+    await resource.save();
+
     // Notify owner
     await Notification.createNotification({
       recipient: resource.owner,
       title: 'Return request',
-      message: `${req.user.name} has requested to return "${resource.name}". Please mark it available once received.`,
+      sender: req.user.id,
+      message: `${borrower?.name || 'A student'} requested to return "${resource.name}" (${borrower?.hostelBlock ? `${borrower.hostelBlock} Block, Room ${borrower.roomNumber}` : 'hostel info not provided'}).`,
       type: 'resource',
-      category: 'borrow-request',
+      category: 'returned',
       priority: 'medium',
       relatedEntity: { entityType: 'resource', entityId: resource._id },
       actionUrl: `/resources/${resource._id}`,
-      actionText: 'Mark Available'
+      actionText: 'Mark Available',
+      metadata: {
+        borrowerName: borrower?.name,
+        borrowerHostelBlock: borrower?.hostelBlock,
+        borrowerRoomNumber: borrower?.roomNumber
+      }
     });
 
     res.status(200).json({ status: 'success', message: 'Return request sent' });

@@ -12,30 +12,70 @@ const fetchResources = async (filters) => {
   return res.data.data
 }
 
+const fetchResourceRequests = async (filters) => {
+  const params = new URLSearchParams(filters)
+  const res = await api.get(`/resource-requests?${params.toString()}`)
+  return res.data.data
+}
+
 const ResourcesPage = () => {
   const queryClient = useQueryClient()
   const { user } = useAuthStore()
-  const [filters, setFilters] = useState({ category: '', availability: '', search: '' })
+  const [filters, setFilters] = useState({ category: '', availability: 'available', search: '' })
   const [wishlistOnly, setWishlistOnly] = useState(false)
+  const [listMode, setListMode] = useState('others')
   const [showForm, setShowForm] = useState(false)
+  const [showRequestForm, setShowRequestForm] = useState(false)
+  const [showFulfillForm, setShowFulfillForm] = useState(false)
   const [showSuccess, setShowSuccess] = useState(false)
   const [editingId, setEditingId] = useState(null)
+  const [selectedRequest, setSelectedRequest] = useState(null)
   const [formValues, setFormValues] = useState({
     name: '',
     description: '',
     category: 'electronics',
     condition: 'good',
-    availability: 'available',
+    imageUrl: '',
+  })
+
+  const [requestFormValues, setRequestFormValues] = useState({
+    title: '',
+    description: '',
+    category: 'electronics',
+  })
+
+  const [fulfillFormValues, setFulfillFormValues] = useState({
+    title: '',
+    description: '',
+    condition: 'good',
     imageUrl: '',
   })
 
   const { data, isLoading } = useQuery(['resources', filters], () => fetchResources(filters))
 
+  const { data: requestsData, isLoading: isRequestsLoading } = useQuery(
+    ['resource-requests'],
+    () => fetchResourceRequests({ status: 'open' })
+  )
+
   const resources = data?.resources || []
+  const requests = requestsData?.requests || []
   const userId = user?._id || user?.id
-  const displayedResources = wishlistOnly
-    ? resources.filter((item) => (item.wishlist || []).some((w) => (w.user?._id || w.user || '').toString() === (userId || '').toString()))
-    : resources
+
+  const isMyResource = (item) => {
+    const ownerId = (item?.owner?._id || item?.owner || '').toString()
+    return ownerId && userId && ownerId === userId.toString()
+  }
+
+  const baseResources = useMemo(() => {
+    if (!userId) return resources
+    if (listMode === 'mine') return resources.filter((item) => isMyResource(item))
+    return resources.filter((item) => !isMyResource(item))
+  }, [resources, userId, listMode])
+
+  const displayedResources = (wishlistOnly && listMode === 'others')
+    ? baseResources.filter((item) => (item.wishlist || []).some((w) => (w.user?._id || w.user || '').toString() === (userId || '').toString()))
+    : baseResources
 
   const availabilityBadge = (status) => {
     const map = {
@@ -45,6 +85,7 @@ const ResourcesPage = () => {
       maintenance: 'bg-secondary-200 text-secondary-800 border-secondary-300',
       unavailable: 'bg-secondary-300 text-secondary-900 border-secondary-400',
     }
+
     return map[status] || 'bg-secondary-100 text-secondary-800 border-secondary-200'
   }
 
@@ -57,6 +98,44 @@ const ResourcesPage = () => {
         queryClient.invalidateQueries(['resources'])
       },
       onError: () => toast.error('Could not update wishlist'),
+    }
+  )
+
+  const createRequestMutation = useMutation((payload) => api.post('/resource-requests', payload), {
+    onSuccess: () => {
+      toast.success('Request posted')
+      setShowRequestForm(false)
+      setRequestFormValues({
+        title: '',
+        description: '',
+        category: 'electronics',
+      })
+      queryClient.invalidateQueries(['resource-requests'])
+    },
+    onError: (err) => toast.error(err.response?.data?.message || 'Could not create request'),
+  })
+
+  const cancelRequestMutation = useMutation((id) => api.put(`/resource-requests/${id}/cancel`), {
+    onSuccess: () => {
+      toast.success('Request cancelled')
+      queryClient.invalidateQueries(['resource-requests'])
+    },
+    onError: (err) => toast.error(err.response?.data?.message || 'Could not cancel request'),
+  })
+
+  const fulfillRequestMutation = useMutation(
+    ({ id, payload }) => api.post(`/resource-requests/${id}/fulfill`, payload),
+    {
+      onSuccess: () => {
+        toast.success('Request fulfilled and resource listed')
+        setShowFulfillForm(false)
+        setSelectedRequest(null)
+        setFulfillFormValues({ title: '', description: '', condition: 'good', imageUrl: '' })
+        queryClient.invalidateQueries(['resource-requests'])
+        queryClient.invalidateQueries(['resources'])
+        queryClient.invalidateQueries('notifications')
+      },
+      onError: (err) => toast.error(err.response?.data?.message || 'Could not fulfill request'),
     }
   )
 
@@ -74,7 +153,6 @@ const ResourcesPage = () => {
           description: '',
           category: 'electronics',
           condition: 'good',
-          availability: 'available',
           imageUrl: '',
         })
         queryClient.invalidateQueries(['resources'])
@@ -98,7 +176,6 @@ const ResourcesPage = () => {
           description: '',
           category: 'electronics',
           condition: 'good',
-          availability: 'available',
           imageUrl: '',
         })
         queryClient.invalidateQueries(['resources'])
@@ -111,9 +188,21 @@ const ResourcesPage = () => {
   )
 
   const filterBadge = useMemo(() => {
-    const active = Object.entries(filters).filter(([_, v]) => v)
+    const active = Object.entries(filters).filter(([key, value]) => {
+      if (!value) return false
+      if (key === 'availability' && value === 'available') return false
+      return true
+    })
     if (!active.length) return 'All'
-    return active.map(([k, v]) => `${k}: ${v}`).join(', ')
+    return active
+      .map(([key, value]) => {
+        if (key === 'search') return `Search: "${value}"`
+        if (key === 'availability') return value.charAt(0).toUpperCase() + value.slice(1)
+        return `${key.charAt(0).toUpperCase() + key.slice(1)}: ${
+          value.charAt(0).toUpperCase() + value.slice(1)
+        }`
+      })
+      .join(', ')
   }, [filters])
 
   const resetForm = () => {
@@ -123,10 +212,10 @@ const ResourcesPage = () => {
       description: '',
       category: 'electronics',
       condition: 'good',
-      availability: 'available',
       imageUrl: '',
     })
   }
+
 
   const handleSubmit = (e) => {
     e.preventDefault()
@@ -143,7 +232,6 @@ const ResourcesPage = () => {
       description: formValues.description,
       category: formValues.category,
       condition: formValues.condition,
-      availability: formValues.availability,
       hostelBlock: user.hostelBlock,
       roomNumber: user.roomNumber,
       images: formValues.imageUrl ? [formValues.imageUrl] : [],
@@ -153,6 +241,36 @@ const ResourcesPage = () => {
     } else {
       createResourceMutation.mutate(payload)
     }
+  }
+
+  const handleRequestSubmit = (e) => {
+    e.preventDefault()
+    if (!requestFormValues.title || !requestFormValues.description) {
+      toast.error('Title and description are required')
+      return
+    }
+    const payload = {
+      title: requestFormValues.title,
+      description: requestFormValues.description,
+      category: requestFormValues.category,
+    }
+    createRequestMutation.mutate(payload)
+  }
+
+  const handleFulfillSubmit = (e) => {
+    e.preventDefault()
+    if (!selectedRequest?._id) return
+    if (!fulfillFormValues.title || !fulfillFormValues.description) {
+      toast.error('Title and description are required')
+      return
+    }
+    const payload = {
+      title: fulfillFormValues.title,
+      description: fulfillFormValues.description,
+      condition: fulfillFormValues.condition,
+      imageUrl: fulfillFormValues.imageUrl,
+    }
+    fulfillRequestMutation.mutate({ id: selectedRequest._id, payload })
   }
 
   return (
@@ -171,7 +289,7 @@ const ResourcesPage = () => {
           <motion.button
             whileHover={{ y: -2, boxShadow: '0 20px 50px -24px rgba(59,130,246,0.65)', background: 'linear-gradient(120deg, #2563eb, #22d3ee)' }}
             whileTap={{ scale: 0.96 }}
-            onClick={() => { setEditingId(null); setShowForm(true) }}
+            onClick={() => { resetForm(); setShowForm(true) }}
             className="btn-primary relative overflow-hidden"
           >
             <motion.span
@@ -188,6 +306,15 @@ const ResourcesPage = () => {
               animate={{ opacity: showSuccess ? 0.3 : 0, scale: showSuccess ? 1.1 : 0.98 }}
               transition={{ duration: 0.4 }}
             />
+          </motion.button>
+
+          <motion.button
+            whileHover={{ y: -2, boxShadow: '0 14px 30px -20px rgba(59,130,246,0.35)' }}
+            whileTap={{ scale: 0.97 }}
+            onClick={() => setShowRequestForm(true)}
+            className="btn-secondary"
+          >
+            + Request Item
           </motion.button>
         </div>
       </motion.div>
@@ -227,22 +354,47 @@ const ResourcesPage = () => {
           value={filters.availability}
           onChange={(e) => setFilters((p) => ({ ...p, availability: e.target.value }))}
         >
-          <option value="">Availability: All</option>
           <option value="available">Available</option>
           <option value="requested">Requested</option>
           <option value="borrowed">Borrowed</option>
           <option value="maintenance">Maintenance</option>
           <option value="unavailable">Unavailable</option>
         </motion.select>
-        <div className="flex items-center justify-between text-sm text-secondary-600">
-          <span>Active filters: {filterBadge}</span>
-          <button
-            type="button"
-            onClick={() => setWishlistOnly((p) => !p)}
-            className={`px-3 py-2 rounded-lg border text-sm font-semibold transition ${wishlistOnly ? 'bg-primary-100 text-primary-700 border-primary-200' : 'bg-white text-secondary-700 border-secondary-200'}`}
-          >
-            {wishlistOnly ? 'Show All' : 'Show Wishlist Only'}
-          </button>
+        <div className="flex items-center justify-between text-sm text-secondary-600 gap-3">
+          <div className="flex items-center gap-3 flex-wrap">
+            <span>Active filters: {filterBadge}</span>
+            <div className="flex items-center rounded-lg border border-secondary-200 overflow-hidden">
+              <button
+                type="button"
+                onClick={() => {
+                  setListMode('others')
+                }}
+                className={`px-3 py-2 text-sm font-semibold transition ${listMode === 'others' ? 'bg-primary-100 text-primary-700' : 'bg-white text-secondary-700'}`}
+              >
+                Others' Listings
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setListMode('mine')
+                  setWishlistOnly(false)
+                }}
+                className={`px-3 py-2 text-sm font-semibold transition border-l border-secondary-200 ${listMode === 'mine' ? 'bg-primary-100 text-primary-700' : 'bg-white text-secondary-700'}`}
+              >
+                My Listings
+              </button>
+            </div>
+          </div>
+
+          {listMode === 'others' && (
+            <button
+              type="button"
+              onClick={() => setWishlistOnly((p) => !p)}
+              className={`px-3 py-2 rounded-lg border text-sm font-semibold transition ${wishlistOnly ? 'bg-primary-100 text-primary-700 border-primary-200' : 'bg-white text-secondary-700 border-secondary-200'}`}
+            >
+              {wishlistOnly ? 'Show All' : 'Show Wishlist Only'}
+            </button>
+          )}
         </div>
       </motion.div>
 
@@ -336,7 +488,6 @@ const ResourcesPage = () => {
                             description: item.description,
                             category: item.category,
                             condition: item.condition,
-                            availability: item.availability,
                             imageUrl: (item.images && item.images[0]) || '',
                           })
                           setShowForm(true)
@@ -354,6 +505,92 @@ const ResourcesPage = () => {
           </AnimatePresence>
         </div>
       )}
+
+      <div className="bg-white border border-secondary-100 rounded-2xl shadow-soft p-5 space-y-4">
+        <div className="flex items-center justify-between gap-3 flex-wrap">
+          <div>
+            <h2 className="text-xl font-bold text-secondary-900">Open Requests</h2>
+            <p className="text-secondary-600 text-sm">Students can request items that are not currently listed.</p>
+          </div>
+          <motion.button
+            whileHover={{ y: -2, boxShadow: '0 14px 30px -20px rgba(59,130,246,0.35)' }}
+            whileTap={{ scale: 0.97 }}
+            onClick={() => setShowRequestForm(true)}
+            className="btn-secondary"
+          >
+            + Request Item
+          </motion.button>
+        </div>
+
+        {isRequestsLoading ? (
+          <div className="h-24 rounded-2xl bg-secondary-100 animate-pulse" />
+        ) : requests.length === 0 ? (
+          <p className="text-secondary-500">No open requests right now.</p>
+        ) : (
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            <AnimatePresence>
+              {requests.map((reqItem, idx) => {
+                const requesterId = reqItem?.requestedBy?._id
+                const isRequester = requesterId && userId && requesterId.toString() === userId.toString()
+                return (
+                  <motion.div
+                    key={reqItem._id}
+                    initial={{ opacity: 0, y: 12 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.22, delay: idx * 0.02 }}
+                    className="p-4 bg-white border border-secondary-100 rounded-2xl shadow-soft"
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className="text-sm text-secondary-500">{reqItem.category}</p>
+                        <h3 className="text-lg font-semibold text-secondary-900">{reqItem.title}</h3>
+                        <p className="text-secondary-600 text-sm mt-2 whitespace-pre-line">{reqItem.description}</p>
+                        <p className="text-xs text-secondary-500 mt-3">
+                          Requested by {isRequester ? 'You' : (reqItem.requestedBy?.name || 'Student')}
+                          {reqItem.requestedBy?.hostelBlock ? ` • ${reqItem.requestedBy.hostelBlock} Block • Room ${reqItem.requestedBy.roomNumber}` : ''}
+                        </p>
+                      </div>
+
+                      <motion.span className="badge-success capitalize">{reqItem.status}</motion.span>
+                    </div>
+
+                    <div className="mt-4 flex items-center justify-end gap-2">
+                      {isRequester ? (
+                        <motion.button
+                          whileTap={{ scale: 0.97 }}
+                          className="btn-secondary"
+                          onClick={() => cancelRequestMutation.mutate(reqItem._id)}
+                          disabled={cancelRequestMutation.isLoading}
+                        >
+                          Cancel
+                        </motion.button>
+                      ) : (
+                        <motion.button
+                          whileHover={{ y: -1 }}
+                          whileTap={{ scale: 0.97 }}
+                          className="btn-primary"
+                          onClick={() => {
+                            setSelectedRequest(reqItem)
+                            setFulfillFormValues({
+                              title: reqItem.title,
+                              description: reqItem.description,
+                              condition: 'good',
+                              imageUrl: '',
+                            })
+                            setShowFulfillForm(true)
+                          }}
+                        >
+                          I Have This
+                        </motion.button>
+                      )}
+                    </div>
+                  </motion.div>
+                )
+              })}
+            </AnimatePresence>
+          </div>
+        )}
+      </div>
 
       {/* Inline modal for add resource */}
       <AnimatePresence>
@@ -440,20 +677,6 @@ const ResourcesPage = () => {
                       <option value="poor">Poor</option>
                     </select>
                   </motion.div>
-                  <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.16 }} className="space-y-2">
-                    <label className="text-sm font-semibold text-secondary-800">Availability</label>
-                    <select
-                      className="input"
-                      value={formValues.availability}
-                      onChange={(e) => setFormValues((p) => ({ ...p, availability: e.target.value }))}
-                    >
-                      <option value="available">Available</option>
-                      <option value="requested">Requested</option>
-                      <option value="borrowed">Borrowed</option>
-                      <option value="maintenance">Maintenance</option>
-                      <option value="unavailable">Unavailable</option>
-                    </select>
-                  </motion.div>
                   <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.18 }} className="space-y-2">
                     <label className="text-sm font-semibold text-secondary-800">Image URL (optional)</label>
                     <input
@@ -483,7 +706,7 @@ const ResourcesPage = () => {
                     whileTap={{ scale: 0.97 }}
                     type="submit"
                     className="btn-primary relative overflow-hidden"
-                    disabled={createResourceMutation.isLoading || updateResourceMutation.isLoading || formValues.availability === 'borrowed'}
+                    disabled={createResourceMutation.isLoading || updateResourceMutation.isLoading}
                   >
                     <AnimatePresence mode="wait" initial={false}>
                       {createResourceMutation.isLoading || updateResourceMutation.isLoading ? (
@@ -515,6 +738,204 @@ const ResourcesPage = () => {
                       animate={{ opacity: showSuccess ? 0.25 : 0, scale: showSuccess ? 1.05 : 1 }}
                       transition={{ duration: 0.35 }}
                     />
+                  </motion.button>
+                </div>
+              </form>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {showRequestForm && (
+          <motion.div
+            className="fixed inset-0 z-30 bg-black/30 backdrop-blur-sm flex items-center justify-center px-4"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+          >
+            <motion.div
+              initial={{ opacity: 0, y: 30, scale: 0.98 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 20, scale: 0.98 }}
+              transition={{ duration: 0.25, ease: 'easeOut' }}
+              className="w-full max-w-2xl bg-white rounded-2xl shadow-strong border border-secondary-100 p-6 space-y-4"
+            >
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="text-xl font-semibold text-secondary-900">Request an Item</h3>
+                  <p className="text-secondary-600 text-sm">Ask others if they can list an item you need.</p>
+                </div>
+                <motion.button
+                  whileTap={{ scale: 0.95 }}
+                  onClick={() => setShowRequestForm(false)}
+                  className="text-secondary-500 hover:text-secondary-800"
+                >
+                  ✕
+                </motion.button>
+              </div>
+
+              <form className="space-y-4" onSubmit={handleRequestSubmit}>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.05 }} className="space-y-2">
+                    <label className="text-sm font-semibold text-secondary-800">Title</label>
+                    <input
+                      className="input"
+                      value={requestFormValues.title}
+                      onChange={(e) => setRequestFormValues((p) => ({ ...p, title: e.target.value }))}
+                      placeholder="e.g., Need an umbrella"
+                      required
+                    />
+                  </motion.div>
+                  <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.08 }} className="space-y-2">
+                    <label className="text-sm font-semibold text-secondary-800">Category</label>
+                    <select
+                      className="input"
+                      value={requestFormValues.category}
+                      onChange={(e) => setRequestFormValues((p) => ({ ...p, category: e.target.value }))}
+                    >
+                      <option value="electronics">Electronics</option>
+                      <option value="books">Books</option>
+                      <option value="sports">Sports</option>
+                      <option value="kitchen">Kitchen</option>
+                      <option value="tools">Tools</option>
+                      <option value="study-materials">Study materials</option>
+                      <option value="other">Other</option>
+                    </select>
+                  </motion.div>
+                </div>
+
+                <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.11 }} className="space-y-2">
+                  <label className="text-sm font-semibold text-secondary-800">Description</label>
+                  <textarea
+                    className="input min-h-[96px]"
+                    value={requestFormValues.description}
+                    onChange={(e) => setRequestFormValues((p) => ({ ...p, description: e.target.value }))}
+                    placeholder="Why do you need it, and for how long?"
+                    required
+                  />
+                </motion.div>
+
+                <div className="flex gap-3 justify-end">
+                  <motion.button whileTap={{ scale: 0.97 }} type="button" className="btn-secondary" onClick={() => setShowRequestForm(false)}>
+                    Cancel
+                  </motion.button>
+                  <motion.button
+                    whileHover={{ y: -1 }}
+                    whileTap={{ scale: 0.97 }}
+                    type="submit"
+                    className="btn-primary"
+                    disabled={createRequestMutation.isLoading}
+                  >
+                    {createRequestMutation.isLoading ? 'Posting…' : 'Post Request'}
+                  </motion.button>
+                </div>
+              </form>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {showFulfillForm && selectedRequest && (
+          <motion.div
+            className="fixed inset-0 z-30 bg-black/30 backdrop-blur-sm flex items-center justify-center px-4"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+          >
+            <motion.div
+              initial={{ opacity: 0, y: 30, scale: 0.98 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 20, scale: 0.98 }}
+              transition={{ duration: 0.25, ease: 'easeOut' }}
+              className="w-full max-w-2xl bg-white rounded-2xl shadow-strong border border-secondary-100 p-6 space-y-4"
+            >
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="text-xl font-semibold text-secondary-900">Fulfill Request</h3>
+                  <p className="text-secondary-600 text-sm">This will list a normal resource for “{selectedRequest.title}”.</p>
+                </div>
+                <motion.button
+                  whileTap={{ scale: 0.95 }}
+                  onClick={() => {
+                    setShowFulfillForm(false)
+                    setSelectedRequest(null)
+                  }}
+                  className="text-secondary-500 hover:text-secondary-800"
+                >
+                  ✕
+                </motion.button>
+              </div>
+
+              <form className="space-y-4" onSubmit={handleFulfillSubmit}>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.03 }} className="space-y-2 md:col-span-2">
+                    <label className="text-sm font-semibold text-secondary-800">Title</label>
+                    <input
+                      className="input"
+                      value={fulfillFormValues.title}
+                      onChange={(e) => setFulfillFormValues((p) => ({ ...p, title: e.target.value }))}
+                      placeholder="e.g., Umbrella"
+                      required
+                    />
+                  </motion.div>
+
+                  <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.05 }} className="space-y-2 md:col-span-2">
+                    <label className="text-sm font-semibold text-secondary-800">Description</label>
+                    <textarea
+                      className="input min-h-[96px]"
+                      value={fulfillFormValues.description}
+                      onChange={(e) => setFulfillFormValues((p) => ({ ...p, description: e.target.value }))}
+                      placeholder="Add any notes for borrowing"
+                      required
+                    />
+                  </motion.div>
+
+                  <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.05 }} className="space-y-2">
+                    <label className="text-sm font-semibold text-secondary-800">Condition</label>
+                    <select
+                      className="input"
+                      value={fulfillFormValues.condition}
+                      onChange={(e) => setFulfillFormValues((p) => ({ ...p, condition: e.target.value }))}
+                    >
+                      <option value="excellent">Excellent</option>
+                      <option value="good">Good</option>
+                      <option value="fair">Fair</option>
+                      <option value="poor">Poor</option>
+                    </select>
+                  </motion.div>
+                  <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.08 }} className="space-y-2">
+                    <label className="text-sm font-semibold text-secondary-800">Image URL (optional)</label>
+                    <input
+                      className="input"
+                      value={fulfillFormValues.imageUrl}
+                      onChange={(e) => setFulfillFormValues((p) => ({ ...p, imageUrl: e.target.value }))}
+                      placeholder="https://.../item.jpg"
+                    />
+                  </motion.div>
+                </div>
+
+                <div className="flex gap-3 justify-end">
+                  <motion.button
+                    whileTap={{ scale: 0.97 }}
+                    type="button"
+                    className="btn-secondary"
+                    onClick={() => {
+                      setShowFulfillForm(false)
+                      setSelectedRequest(null)
+                    }}
+                  >
+                    Cancel
+                  </motion.button>
+                  <motion.button
+                    whileHover={{ y: -1 }}
+                    whileTap={{ scale: 0.97 }}
+                    type="submit"
+                    className="btn-primary"
+                    disabled={fulfillRequestMutation.isLoading}
+                  >
+                    {fulfillRequestMutation.isLoading ? 'Listing…' : 'List Resource'}
                   </motion.button>
                 </div>
               </form>
