@@ -86,6 +86,7 @@ function App() {
           
           {/* User routes */}
           <Route path="profile" element={<ProfilePage />} />
+          <Route path="profile/:id" element={<ProfilePage />} />
           <Route path="notifications" element={<NotificationsPage />} />
           
           {/* Admin routes */}

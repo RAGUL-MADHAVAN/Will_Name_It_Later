@@ -60,6 +60,7 @@ const validateUserRegistration = [
     .withMessage('Hostel block must be A, B, C, or D'),
   
   body('roomNumber')
+    .optional({ checkFalsy: true })
     .matches(/^[A-Z]\d{3}$/)
     .withMessage('Room number must be in format like A101'),
   
@@ -223,7 +224,12 @@ const validateResourceReturn = [
 
 // Complaint feedback validation
 const validateComplaintFeedback = [
+  body('resolved')
+    .isBoolean()
+    .withMessage('Resolution confirmation is required'),
+
   body('rating')
+    .optional()
     .isInt({ min: 1, max: 5 })
     .withMessage('Rating must be between 1 and 5'),
   

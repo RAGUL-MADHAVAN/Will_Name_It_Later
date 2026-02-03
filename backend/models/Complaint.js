@@ -25,7 +25,7 @@ const complaintSchema = new mongoose.Schema({
   },
   status: {
     type: String,
-    enum: ['pending', 'in-progress', 'resolved', 'rejected'],
+    enum: ['pending', 'in-progress', 'awaiting-approval', 'resolved', 'rejected'],
     default: 'pending'
   },
   reportedBy: {
@@ -67,6 +67,9 @@ const complaintSchema = new mongoose.Schema({
     maxlength: [500, 'Resolution notes cannot exceed 500 characters']
   },
   feedback: {
+    resolved: {
+      type: Boolean
+    },
     rating: {
       type: Number,
       min: 1,

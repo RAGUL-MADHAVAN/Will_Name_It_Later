@@ -24,7 +24,7 @@ const notificationSchema = new mongoose.Schema({
   },
   type: {
     type: String,
-    enum: ['complaint', 'resource', 'system', 'reminder', 'warning', 'success'],
+    enum: ['complaint', 'resource', 'system', 'reminder', 'warning', 'success', 'complaint_upvote'],
     required: true
   },
   category: {

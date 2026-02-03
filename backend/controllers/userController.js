@@ -357,6 +357,16 @@ const getAdminDashboard = async (req, res) => {
       });
     }
 
+    const complaintScope = req.user.role === 'warden'
+      ? { hostelBlock: req.user.hostelBlock }
+      : {};
+    const resourceScope = req.user.role === 'warden'
+      ? { hostelBlock: req.user.hostelBlock }
+      : {};
+    const userScope = req.user.role === 'warden'
+      ? { hostelBlock: req.user.hostelBlock }
+      : {};
+
     // Get overall statistics
     const [
       totalUsers,
@@ -364,48 +374,32 @@ const getAdminDashboard = async (req, res) => {
       totalResources,
       pendingComplaints,
       inProgressComplaints,
+      awaitingApprovalComplaints,
       resolvedComplaints,
       availableResources,
       borrowedResources
     ] = await Promise.all([
-      User.countDocuments({ isActive: true }),
-      Complaint.countDocuments(),
-      Resource.countDocuments(),
-      Complaint.countDocuments({ status: 'pending' }),
-      Complaint.countDocuments({ status: 'in-progress' }),
-      Complaint.countDocuments({ status: 'resolved' }),
-      Resource.countDocuments({ availability: 'available' }),
-      Resource.countDocuments({ availability: 'borrowed' })
+      User.countDocuments({ isActive: true, ...userScope }),
+      Complaint.countDocuments(complaintScope),
+      Resource.countDocuments(resourceScope),
+      Complaint.countDocuments({ status: 'pending', ...complaintScope }),
+      Complaint.countDocuments({ status: 'in-progress', ...complaintScope }),
+      Complaint.countDocuments({ status: 'awaiting-approval', ...complaintScope }),
+      Complaint.countDocuments({ status: 'resolved', ...complaintScope }),
+      Resource.countDocuments({ availability: 'available', ...resourceScope }),
+      Resource.countDocuments({ availability: 'borrowed', ...resourceScope })
     ]);
 
     // Get recent complaints
-    const recentComplaints = await Complaint.find()
+    const recentComplaints = await Complaint.find(complaintScope)
       .populate('reportedBy', 'name hostelBlock roomNumber')
       .sort({ createdAt: -1 })
       .limit(10);
 
     // Get recent resources
-    const recentResources = await Resource.find()
+    const recentResources = await Resource.find(resourceScope)
       .populate('owner', 'name hostelBlock roomNumber')
       .sort({ createdAt: -1 })
-      .limit(10);
-
-    // Get urgent complaints
-    const urgentComplaints = await Complaint.find({
-      priority: 'urgent',
-      status: { $in: ['pending', 'in-progress'] }
-    })
-      .populate('reportedBy', 'name hostelBlock roomNumber')
-      .sort({ createdAt: -1 })
-      .limit(5);
-
-    // Get overdue resources
-    const overdueResources = await Resource.find({
-      availability: 'borrowed',
-      'borrowHistory.dueDate': { $lt: new Date() }
-    })
-      .populate('owner', 'name')
-      .populate('currentBorrower', 'name')
       .limit(10);
 
     res.status(200).json({
@@ -417,6 +411,7 @@ const getAdminDashboard = async (req, res) => {
             total: totalComplaints,
             pending: pendingComplaints,
             inProgress: inProgressComplaints,
+            awaitingApproval: awaitingApprovalComplaints,
             resolved: resolvedComplaints
           },
           resources: {
@@ -424,10 +419,6 @@ const getAdminDashboard = async (req, res) => {
             available: availableResources,
             borrowed: borrowedResources
           }
-        },
-        urgent: {
-          complaints: urgentComplaints,
-          overdueResources
         },
         recent: {
           complaints: recentComplaints,

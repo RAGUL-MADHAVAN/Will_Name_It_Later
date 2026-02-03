@@ -8,6 +8,8 @@ import { useAuthStore } from '@/store/authStore'
 
 const fetchComplaints = async (filters) => {
   const params = new URLSearchParams(filters)
+  if (!params.has('sortBy')) params.set('sortBy', 'upvoteCount')
+  if (!params.has('sortOrder')) params.set('sortOrder', 'desc')
   const res = await api.get(`/complaints?${params.toString()}`)
   return res.data.data
 }
@@ -17,7 +19,7 @@ const ComplaintsPage = () => {
   const { user, isLoading: authLoading } = useAuthStore()
   const location = useLocation()
   const navigate = useNavigate()
-  const [filters, setFilters] = useState({ status: '', priority: '', category: '' })
+  const [filters, setFilters] = useState({ status: '', category: '', search: '' })
   const [showForm, setShowForm] = useState(false)
   const [editingId, setEditingId] = useState(null)
   const [successMessage, setSuccessMessage] = useState('')
@@ -42,11 +44,18 @@ const ComplaintsPage = () => {
   const complaints = data?.complaints || []
 
   useEffect(() => {
-    if (location.state?.openComplaintForm) {
+    const params = new URLSearchParams(location.search)
+    const nextFilters = {
+      status: params.get('status') || '',
+      category: params.get('category') || '',
+      search: params.get('search') || ''
+    }
+    setFilters((prev) => ({ ...prev, ...nextFilters }))
+    if (location.state?.openComplaintForm && user?.role === 'student') {
       setShowForm(true)
       navigate(location.pathname, { replace: true })
     }
-  }, [location.state, location.pathname, navigate])
+  }, [location.state, location.pathname, location.search, navigate, user?.role])
 
   const createComplaintMutation = useMutation(
     (payload) => api.post('/complaints', payload),
@@ -97,11 +106,45 @@ const ComplaintsPage = () => {
     }
   )
 
+  const upvoteMutation = useMutation(
+    (id) => api.post(`/complaints/${id}/upvote`),
+    {
+      onSuccess: (_, id) => {
+        toast.success('Upvoted')
+        queryClient.invalidateQueries(['complaints'])
+        queryClient.invalidateQueries('dashboard')
+      },
+      onError: (err) => {
+        toast.error(err.response?.data?.message || 'Could not upvote')
+      },
+    }
+  )
+
+  const removeUpvoteMutation = useMutation(
+    (id) => api.delete(`/complaints/${id}/upvote`),
+    {
+      onSuccess: () => {
+        toast.success('Upvote removed')
+        queryClient.invalidateQueries(['complaints'])
+        queryClient.invalidateQueries('dashboard')
+      },
+      onError: (err) => {
+        toast.error(err.response?.data?.message || 'Could not remove upvote')
+      },
+    }
+  )
+
   const statusTone = {
     pending: { badge: 'badge-warning', glow: '0 0 0 8px rgba(251,191,36,0.18)', y: 0 },
     'in-progress': { badge: 'badge-primary', glow: '0 0 0 8px rgba(59,130,246,0.16)', y: -1 },
+    'awaiting-approval': { badge: 'badge-secondary', glow: '0 0 0 8px rgba(148,163,184,0.18)', y: 0 },
     resolved: { badge: 'badge-success', glow: '0 0 0 6px rgba(34,197,94,0.14)', y: 0 },
   }
+
+  const visibleComplaints = useMemo(() => {
+    if (filters.status) return complaints
+    return complaints.filter((item) => item.status !== 'resolved')
+  }, [complaints, filters.status])
 
   const onFilterChange = (key, value) => {
     setFilters((prev) => ({ ...prev, [key]: value }))
@@ -166,19 +209,21 @@ const ComplaintsPage = () => {
         <div className="flex items-center justify-between gap-3 flex-wrap">
           <div>
             <h1 className="text-2xl font-bold text-secondary-900">Complaints</h1>
-            <p className="text-secondary-600">Track and upvote issues in your hostel.</p>
+            <p className="text-secondary-600">Track issues in your hostel.</p>
           </div>
-          <motion.button
-            whileHover={{ y: -2, boxShadow: '0 18px 45px -26px rgba(59,130,246,0.6)', background: 'linear-gradient(120deg, #2563eb, #7c3aed)' }}
-            whileTap={{ scale: 0.97 }}
-            onClick={() => { setEditingId(null); setShowForm(true) }}
-            className="btn-primary relative overflow-hidden"
-          >
-            <motion.span initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} transition={{ duration: 0.18 }} className="relative z-10">
-              + Raise Complaint
-            </motion.span>
-            <motion.span className="absolute inset-0 bg-white/10" initial={false} animate={{ opacity: showForm ? 0.2 : 0, scale: showForm ? 1.04 : 1 }} transition={{ duration: 0.25 }} />
-          </motion.button>
+          {user?.role === 'student' && (
+            <motion.button
+              whileHover={{ y: -2, boxShadow: '0 18px 45px -26px rgba(59,130,246,0.6)', background: 'linear-gradient(120deg, #2563eb, #7c3aed)' }}
+              whileTap={{ scale: 0.97 }}
+              onClick={() => { setEditingId(null); setShowForm(true) }}
+              className="btn-primary relative overflow-hidden"
+            >
+              <motion.span initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} transition={{ duration: 0.18 }} className="relative z-10">
+                + Raise Complaint
+              </motion.span>
+              <motion.span className="absolute inset-0 bg-white/10" initial={false} animate={{ opacity: showForm ? 0.2 : 0, scale: showForm ? 1.04 : 1 }} transition={{ duration: 0.25 }} />
+            </motion.button>
+          )}
         </div>
       </div>
 
@@ -191,18 +236,9 @@ const ComplaintsPage = () => {
           <option value="">Status: All</option>
           <option value="pending">Pending</option>
           <option value="in-progress">In-progress</option>
+          <option value="awaiting-approval">Awaiting approval</option>
           <option value="resolved">Resolved</option>
-        </select>
-        <select
-          className="input"
-          value={filters.priority}
-          onChange={(e) => onFilterChange('priority', e.target.value)}
-        >
-          <option value="">Priority: All</option>
-          <option value="low">Low</option>
-          <option value="medium">Medium</option>
-          <option value="high">High</option>
-          <option value="urgent">Urgent</option>
+          <option value="rejected">Rejected</option>
         </select>
         <select
           className="input"
@@ -218,6 +254,12 @@ const ComplaintsPage = () => {
           <option value="security">Security</option>
           <option value="other">Other</option>
         </select>
+        <input
+          className="input"
+          placeholder="Search complaints"
+          value={filters.search}
+          onChange={(e) => onFilterChange('search', e.target.value)}
+        />
         <div className="flex items-center text-sm text-secondary-600">Active filters: {filterBadge}</div>
       </div>
 
@@ -230,7 +272,7 @@ const ComplaintsPage = () => {
       ) : (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
           <AnimatePresence mode="popLayout">
-            {complaints.length === 0 && (
+            {visibleComplaints.length === 0 && (
               <motion.div
                 initial={{ opacity: 0, y: 8 }}
                 animate={{ opacity: 1, y: 0 }}
@@ -240,7 +282,7 @@ const ComplaintsPage = () => {
                 No complaints yet. Be the first to raise one.
               </motion.div>
             )}
-            {complaints.map((item, idx) => {
+            {visibleComplaints.map((item, idx) => {
               const tone = statusTone[item.status] || statusTone.pending
               const isOwner = !!userId && (item.isOwner || item.reporterId === userId || (item.reporter && (item.reporter._id === userId || item.reporter.id === userId)))
               const canEdit = !authLoading && !!userId && isOwner && item.status === 'pending'
@@ -276,6 +318,9 @@ const ComplaintsPage = () => {
                       >
                         {item.priority}
                       </motion.span>
+                      <span className="text-xs font-semibold text-secondary-600 bg-secondary-100 px-2 py-1 rounded-full">
+                        {item.upvoteCount || 0} upvotes
+                      </span>
                       <motion.span
                         layout
                         key={item.status}
@@ -309,7 +354,7 @@ const ComplaintsPage = () => {
                   </div>
                   <p className="text-secondary-600 text-sm mt-2 line-clamp-3 relative">{item.description}</p>
                   <div className="mt-3 flex items-center justify-between text-sm text-secondary-500 relative">
-                    <span>{item.hostelBlock} Block • Room {item.roomNumber}</span>
+                    <span>{item.hostelBlock} Hostel • Room {item.roomNumber}</span>
                     <div className="flex items-center gap-3">
                       {user?.role === 'warden' && item.reportedBy?._id && (
                         <Link
@@ -320,6 +365,37 @@ const ComplaintsPage = () => {
                         </Link>
                       )}
                       <Link to={`/complaints/${item._id}`} className="text-primary-600 font-semibold">View</Link>
+                      {item.reportedBy?._id !== user?._id && (
+                        <motion.button
+                          whileTap={{ scale: 0.95 }}
+                          onClick={() => {
+                            const hasUpvoted = item.upvotedBy?.includes(user?._id)
+                            if (hasUpvoted) {
+                              removeUpvoteMutation.mutate(item._id)
+                            } else {
+                              upvoteMutation.mutate(item._id)
+                            }
+                          }}
+                          className={`font-semibold flex items-center gap-1 ${
+                            item.upvotedBy?.includes(user?._id)
+                              ? 'text-red-600'
+                              : 'text-secondary-600'
+                          }`}
+                          disabled={upvoteMutation.isLoading || removeUpvoteMutation.isLoading}
+                        >
+                          {item.upvotedBy?.includes(user?._id) ? (
+                            <>
+                              <span className="text-lg">❤️</span>
+                              <span>Upvoted</span>
+                            </>
+                          ) : (
+                            <>
+                              <span className="text-lg">🤍</span>
+                              <span>Upvote</span>
+                            </>
+                          )}
+                        </motion.button>
+                      )}
                     </div>
                   </div>
                 </motion.div>
@@ -330,7 +406,7 @@ const ComplaintsPage = () => {
       )}
 
       <AnimatePresence>
-        {showForm && (
+        {showForm && user?.role === 'student' && (
           <motion.div
             className="fixed inset-0 z-30 bg-black/30 backdrop-blur-sm flex items-center justify-center px-4"
             initial={{ opacity: 0 }}
@@ -399,7 +475,7 @@ const ComplaintsPage = () => {
                     <div className="input bg-secondary-50 text-secondary-600">Auto-set by category & time</div>
                   </motion.div>
                   <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.16 }} className="space-y-2">
-                    <label className="text-sm font-semibold text-secondary-800">Hostel Block</label>
+                    <label className="text-sm font-semibold text-secondary-800">Hostel</label>
                     <input
                       className="input"
                       value={user?.hostelBlock || ''}

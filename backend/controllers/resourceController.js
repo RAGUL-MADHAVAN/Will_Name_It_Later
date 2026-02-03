@@ -1,3 +1,4 @@
+const mongoose = require('mongoose');
 const Resource = require('../models/Resource');
 const User = require('../models/User');
 const Notification = require('../models/Notification');
@@ -108,11 +109,16 @@ const getResources = async (req, res) => {
     
     // Search functionality
     if (search) {
-      filter.$or = [
-        { name: { $regex: search, $options: 'i' } },
-        { description: { $regex: search, $options: 'i' } },
-        { tags: { $in: [new RegExp(search, 'i')] } }
-      ];
+      const hostelMatch = search.trim().match(/^(?:hostel\s*)?([ABCD])$/i);
+      if (hostelMatch) {
+        filter.hostelBlock = hostelMatch[1].toUpperCase();
+      } else {
+        filter.$or = [
+          { name: { $regex: search, $options: 'i' } },
+          { description: { $regex: search, $options: 'i' } },
+          { tags: { $in: [new RegExp(search, 'i')] } }
+        ];
+      }
     }
 
     // Build sort

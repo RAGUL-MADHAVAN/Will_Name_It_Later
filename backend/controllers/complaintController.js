@@ -189,7 +189,8 @@ const getComplaints = async (req, res) => {
       priority,
       hostelBlock,
       roomNumber,
-      sortBy = 'createdAt',
+      search,
+      sortBy,
       sortOrder = 'desc'
     } = req.query;
 
@@ -207,11 +208,22 @@ const getComplaints = async (req, res) => {
     if (hostelBlock) filter.hostelBlock = hostelBlock;
     if (roomNumber) filter.roomNumber = roomNumber;
 
+    if (search) {
+      filter.$or = [
+        { title: { $regex: search, $options: 'i' } },
+        { description: { $regex: search, $options: 'i' } }
+      ];
+    }
+
     // Students can see all complaints; anonymity is enforced via masking in formatComplaintForUser
 
     // Build sort
     const sort = {};
-    sort[sortBy] = sortOrder === 'desc' ? -1 : 1;
+    const sortField = sortBy || 'upvoteCount';
+    sort[sortField] = sortOrder === 'desc' ? -1 : 1;
+    if (sortField === 'upvoteCount') {
+      sort.createdAt = -1;
+    }
 
     const skip = (page - 1) * limit;
 
@@ -288,17 +300,17 @@ const updateComplaintStatus = async (req, res) => {
 
     // Update fields
     if (status) {
-      if (!['pending', 'in-progress', 'resolved', 'rejected'].includes(status)) {
+      if (!['pending', 'in-progress', 'awaiting-approval', 'resolved', 'rejected'].includes(status)) {
         return res.status(400).json({
           status: 'error',
           message: 'Invalid status'
         });
       }
-      complaint.status = status;
-      
-      // Set actual resolution time when resolved
       if (status === 'resolved') {
-        complaint.actualResolutionTime = new Date();
+        complaint.status = 'awaiting-approval';
+        complaint.actualResolutionTime = null;
+      } else {
+        complaint.status = status;
       }
     }
     
@@ -314,10 +326,14 @@ const updateComplaintStatus = async (req, res) => {
 
     // Notify the complaint reporter about status change
     if (complaint.reportedBy.toString() !== req.user.id) {
+      const finalStatus = complaint.status;
+      const statusMessage = finalStatus === 'awaiting-approval'
+        ? `Your complaint "${complaint.title}" was marked resolved and awaits your confirmation.`
+        : `Your complaint "${complaint.title}" status has been updated to ${finalStatus}.`;
       await Notification.createNotification({
         recipient: complaint.reportedBy,
         title: `Complaint Status Updated`,
-        message: `Your complaint "${complaint.title}" status has been updated to ${status}.`,
+        message: statusMessage,
         type: 'complaint',
         category: 'update',
         priority: 'medium',
@@ -365,7 +381,7 @@ const updateComplaintStatus = async (req, res) => {
 // Add feedback to resolved complaint
 const addComplaintFeedback = async (req, res) => {
   try {
-    const { rating, comment } = req.body;
+    const { rating, comment, resolved } = req.body;
 
     const complaint = await Complaint.findById(req.params.id);
     if (!complaint) {
@@ -383,16 +399,58 @@ const addComplaintFeedback = async (req, res) => {
       });
     }
 
-    // Check if complaint is resolved
-    if (complaint.status !== 'resolved') {
+    // Check if complaint is awaiting approval
+    if (complaint.status !== 'awaiting-approval') {
       return res.status(400).json({
         status: 'error',
-        message: 'Feedback can only be added to resolved complaints'
+        message: 'Feedback can only be added to complaints awaiting approval'
       });
     }
 
-    complaint.feedback = { rating, comment };
+    complaint.feedback = { resolved, rating, comment };
+    if (resolved === false) {
+      complaint.status = 'in-progress';
+      complaint.actualResolutionTime = null;
+    }
+    if (resolved === true) {
+      complaint.status = 'resolved';
+      complaint.actualResolutionTime = new Date();
+    }
+    complaint.priority = computePriority(complaint.category, complaint.createdAt, complaint.status);
     await complaint.save();
+
+    const recipients = await User.find({
+      isActive: true,
+      $or: [
+        { role: 'admin' },
+        { role: 'warden', hostelBlock: complaint.hostelBlock }
+      ]
+    }).select('_id');
+
+    if (recipients.length) {
+      const title = resolved ? 'Complaint Resolved Confirmed' : 'Complaint Still Unresolved';
+      const message = resolved
+        ? `The reporter confirmed that "${complaint.title}" is resolved.`
+        : `The reporter marked "${complaint.title}" as not resolved.`;
+      await Promise.all(
+        recipients.map((recipient) =>
+          Notification.createNotification({
+            recipient: recipient._id,
+            title,
+            message,
+            type: 'complaint',
+            category: 'update',
+            priority: 'medium',
+            relatedEntity: {
+              entityType: 'complaint',
+              entityId: complaint._id
+            },
+            actionUrl: `/complaints/${complaint._id}`,
+            actionText: 'View Complaint'
+          })
+        )
+      );
+    }
 
     res.status(200).json({
       status: 'success',
@@ -434,6 +492,17 @@ const upvoteComplaint = async (req, res) => {
     }
 
     await complaint.addUpvote(req.user.id);
+
+    // Notify the complaint raiser about the upvote
+    const upvoter = await User.findById(req.user.id).select('name');
+    const statusMessage = complaint.status === 'pending' ? 'still pending' : complaint.status === 'in-progress' ? 'in progress' : complaint.status;
+    await Notification.create({
+      recipient: complaint.reportedBy,
+      type: 'complaint_upvote',
+      title: 'Your complaint received an upvote',
+      message: `${upvoter.name} upvoted your complaint "${complaint.title}". It is ${statusMessage}.`,
+      relatedComplaint: complaint._id,
+    });
 
     res.status(200).json({
       status: 'success',

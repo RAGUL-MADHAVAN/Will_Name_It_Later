@@ -15,6 +15,7 @@ const complaintRoutes = require('./routes/complaints');
 const resourceRoutes = require('./routes/resources');
 const userRoutes = require('./routes/users');
 const notificationRoutes = require('./routes/notifications');
+const resourceRequestRoutes = require('./routes/resourceRequests');
 
 // Initialize Express app
 const app = express();
@@ -57,6 +58,7 @@ app.use('/api/complaints', complaintRoutes);
 app.use('/api/resources', resourceRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/notifications', notificationRoutes);
+app.use('/api/resource-requests', resourceRequestRoutes);
 
 // Health check endpoint
 app.get('/api/health', (req, res) => {

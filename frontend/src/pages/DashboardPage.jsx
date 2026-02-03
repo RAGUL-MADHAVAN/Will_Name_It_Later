@@ -1,9 +1,11 @@
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { useQuery } from 'react-query'
 import { motion } from 'framer-motion'
 import { useNavigate } from 'react-router-dom'
 import StatCard from '@/components/StatCard'
 import api from '@/utils/api'
+import { useAuthStore } from '@/store/authStore'
+import AdminDashboardPage from '@/pages/AdminDashboardPage'
 
 const fetchDashboard = async () => {
   const res = await api.get('/users/dashboard')
@@ -13,6 +15,9 @@ const fetchDashboard = async () => {
 const DashboardPage = () => {
   const { data, isLoading, refetch } = useQuery('dashboard', fetchDashboard)
   const navigate = useNavigate()
+  const { user } = useAuthStore()
+  const [searchTerm, setSearchTerm] = useState('')
+  const [statusFilter, setStatusFilter] = useState('')
 
   useEffect(() => {
     refetch()
@@ -20,20 +25,56 @@ const DashboardPage = () => {
 
   const stats = data?.stats
 
+  if (user?.role === 'warden' || user?.role === 'admin') {
+    return <AdminDashboardPage />
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col gap-2">
         <h1 className="text-2xl font-bold text-secondary-900">Overview</h1>
         <p className="text-secondary-600">Track complaints, resources, and notifications at a glance.</p>
         <div className="flex flex-wrap gap-3 mt-2">
-          <motion.button
-            whileHover={{ y: -2, boxShadow: '0 14px 40px -24px rgba(59,130,246,0.5)' }}
-            whileTap={{ scale: 0.97 }}
-            className="btn-primary"
-            onClick={() => navigate('/complaints', { state: { openComplaintForm: true } })}
+          <input
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            placeholder="Search complaints"
+            className="input max-w-xs"
+          />
+          <select
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value)}
+            className="input max-w-xs"
           >
-            + Raise Complaint
+            <option value="">Status: All</option>
+            <option value="pending">Pending</option>
+            <option value="in-progress">In-progress</option>
+            <option value="resolved">Resolved</option>
+            <option value="rejected">Rejected</option>
+          </select>
+          <motion.button
+            whileHover={{ y: -2, boxShadow: '0 14px 40px -24px rgba(59,130,246,0.4)' }}
+            whileTap={{ scale: 0.97 }}
+            className="btn-secondary"
+            onClick={() => {
+              const params = new URLSearchParams()
+              if (searchTerm) params.set('search', searchTerm)
+              if (statusFilter) params.set('status', statusFilter)
+              navigate(`/complaints${params.toString() ? `?${params}` : ''}`)
+            }}
+          >
+            Search
           </motion.button>
+          {user?.role === 'student' && (
+            <motion.button
+              whileHover={{ y: -2, boxShadow: '0 14px 40px -24px rgba(59,130,246,0.5)' }}
+              whileTap={{ scale: 0.97 }}
+              className="btn-primary"
+              onClick={() => navigate('/complaints', { state: { openComplaintForm: true } })}
+            >
+              + Raise Complaint
+            </motion.button>
+          )}
         </div>
       </div>
 

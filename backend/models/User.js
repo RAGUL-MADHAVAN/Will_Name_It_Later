@@ -33,7 +33,9 @@ const userSchema = new mongoose.Schema({
   },
   roomNumber: {
     type: String,
-    required: [true, 'Room number is required'],
+    required: function() {
+      return this.role !== 'warden';
+    },
     match: [/^[A-Z]\d{3}$/, 'Room number must be in format like A101']
   },
   phoneNumber: {

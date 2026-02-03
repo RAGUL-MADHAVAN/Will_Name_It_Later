@@ -85,6 +85,23 @@ const ResourceDetailPage = () => {
     }
   )
 
+  const deleteResourceMutation = useMutation(
+    () => api.delete(`/resources/${id}`),
+    {
+      onSuccess: () => {
+        toast.success('Resource deleted')
+        navigate('/resources')
+        queryClient.invalidateQueries(['resources'])
+      },
+      onError: (err) => toast.error(err.response?.data?.message || 'Could not delete resource'),
+    }
+  )
+
+  const handleEdit = () => {
+    // Redirect to edit page or open modal; for now, navigate back with edit flag
+    navigate('/resources', { state: { editId: id } })
+  }
+
   const borrowRequests = data?.borrowRequests || []
   const hasPending = useMemo(() => borrowRequests.some((r) => r.status === 'pending'), [borrowRequests])
   const myPending = useMemo(
@@ -114,7 +131,7 @@ const ResourceDetailPage = () => {
         <div>
           <p className="text-sm text-secondary-500">{data.category}</p>
           <h1 className="text-2xl font-bold text-secondary-900">{data.name}</h1>
-          <p className="text-secondary-600">{data.hostelBlock} Block • Room {data.roomNumber}</p>
+          <p className="text-secondary-600">{data.hostelBlock} Hostel • Room {data.roomNumber || '—'}</p>
         </div>
         <motion.span
           layout
@@ -179,22 +196,57 @@ const ResourceDetailPage = () => {
                 </motion.button>
               )
             ) : (
-              <motion.button
-                key="mark"
-                whileHover={{ y: -2, boxShadow: '0 12px 36px -22px rgba(34,197,94,0.7)' }}
-                whileTap={{ scale: 0.97 }}
-                onClick={() => markAvailableMutation.mutate()}
-                className="btn-success relative overflow-hidden"
-                disabled={markAvailableMutation.isLoading || !isBorrowed}
-              >
-                <AnimatePresence mode="wait" initial={false}>
-                  {markAvailableMutation.isLoading ? (
-                    <motion.span key="mark-loading" initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6 }} className="relative z-10">Updating…</motion.span>
-                  ) : (
-                    <motion.span key="mark-text" initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6 }} className="relative z-10">Mark Available</motion.span>
-                  )}
-                </AnimatePresence>
-              </motion.button>
+              <motion.div key="owner-actions" className="flex gap-2">
+                <motion.button
+                  whileHover={{ y: -2, boxShadow: '0 12px 36px -22px rgba(34,197,94,0.7)' }}
+                  whileTap={{ scale: 0.97 }}
+                  onClick={() => markAvailableMutation.mutate()}
+                  className="btn-success relative overflow-hidden"
+                  disabled={markAvailableMutation.isLoading || !isBorrowed}
+                >
+                  <AnimatePresence mode="wait" initial={false}>
+                    {markAvailableMutation.isLoading ? (
+                      <motion.span key="mark-loading" initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6 }} className="relative z-10">Updating…</motion.span>
+                    ) : (
+                      <motion.span key="mark-text" initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6 }} className="relative z-10">Mark Available</motion.span>
+                    )}
+                  </AnimatePresence>
+                </motion.button>
+                <motion.button
+                  whileHover={{ y: -2, boxShadow: '0 12px 36px -22px rgba(59,130,246,0.7)' }}
+                  whileTap={{ scale: 0.97 }}
+                  onClick={handleEdit}
+                  className="btn-primary"
+                  disabled={data.availability === 'borrowed'}
+                >
+                  Edit
+                </motion.button>
+                <motion.button
+                  whileHover={{ y: -2, boxShadow: '0 12px 36px -22px rgba(220,38,38,0.7)' }}
+                  whileTap={{ scale: 0.97 }}
+                  onClick={() => {
+                    if (data.availability === 'borrowed') {
+                      toast.error('Cannot delete a borrowed resource')
+                      return
+                    }
+                    if (!window.confirm('Delete this resource? This cannot be undone.')) return
+                    deleteResourceMutation.mutate()
+                  }}
+                  style={{
+                    background: '#dc2626',
+                    color: '#ffffff',
+                    border: 'none',
+                    padding: '0.5rem 1rem',
+                    borderRadius: '0.5rem',
+                    fontWeight: 600,
+                    cursor: deleteResourceMutation.isLoading ? 'not-allowed' : 'pointer',
+                    opacity: deleteResourceMutation.isLoading ? 0.6 : 1,
+                  }}
+                  disabled={deleteResourceMutation.isLoading}
+                >
+                  {deleteResourceMutation.isLoading ? 'Deleting…' : 'Delete'}
+                </motion.button>
+              </motion.div>
             )}
           </AnimatePresence>
           <motion.button whileTap={{ scale: 0.97 }} onClick={() => navigate(-1)} className="btn-secondary">Back</motion.button>
@@ -212,7 +264,7 @@ const ResourceDetailPage = () => {
                 <div key={r._id} className="p-3 rounded-xl border border-secondary-100 bg-secondary-50 flex items-center justify-between">
                   <div>
                     <p className="font-semibold text-secondary-900">{r.requester?.name || 'Student'}</p>
-                    <p className="text-sm text-secondary-600">{r.requester?.hostelBlock ? `${r.requester.hostelBlock} Block • Room ${r.requester.roomNumber}` : '—'}</p>
+                    <p className="text-sm text-secondary-600">{r.requester?.hostelBlock ? `${r.requester.hostelBlock} Hostel • Room ${r.requester.roomNumber || '—'}` : '—'}</p>
                     {r.message && <p className="text-sm text-secondary-500 mt-1">“{r.message}”</p>}
                     <p className="text-xs text-secondary-500">Requested at {new Date(r.requestedAt).toLocaleString()}</p>
                   </div>

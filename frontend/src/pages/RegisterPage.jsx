@@ -36,8 +36,8 @@ const registerSchema = z
 
     roomNumber: z
       .string()
-      .nonempty('Room number is required')
-      .regex(/^[A-Z]\d{3}$/, 'Format like A101'),
+      .optional()
+      .refine((val) => !val || /^[A-Z]\d{3}$/.test(val), 'Format like A101'),
 
     password: z
       .string()
@@ -49,9 +49,15 @@ const registerSchema = z
       const hostelCode = (val.hostelBlock || '').toUpperCase()
       const expected = `Admin@hostel${hostelCode}`
       if (val.password !== expected) {
-        ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['password'], message: `Use initial password ${expected}` })
+        ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['password'], message: 'Invalid warden password' })
+      }
+      if (val.roomNumber && !/^[A-Z]\d{3}$/.test(val.roomNumber)) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['roomNumber'], message: 'Format like A101' })
       }
     } else {
+      if (!val.roomNumber) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['roomNumber'], message: 'Room number is required' })
+      }
       if (!/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/.test(val.password)) {
         ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['password'], message: 'Include uppercase, lowercase, and number' })
       }
@@ -183,7 +189,9 @@ const RegisterPage = () => {
                 <p className="text-xs text-secondary-500 mt-1">Include uppercase, lowercase, and number</p>
               )}
               {errors.password && (
-                <p className="text-error-500">{errors.password.message}</p>
+                <p className="text-error-500">
+                  {role === 'warden' ? 'Invalid warden password' : errors.password.message}
+                </p>
               )}
             </div>
           </div>
@@ -207,16 +215,18 @@ const RegisterPage = () => {
               )}
             </div>
 
-            <div>
-              <label>Room Number <Required /></label>
-              <input
-                {...register('roomNumber')}
-                className={`${inputClasses} ${errors.roomNumber && 'border-error-400'}`}
-              />
-              {errors.roomNumber && (
-                <p className="text-error-500">{errors.roomNumber.message}</p>
-              )}
-            </div>
+            {role !== 'warden' && (
+              <div>
+                <label>Room Number <Required /></label>
+                <input
+                  {...register('roomNumber')}
+                  className={`${inputClasses} ${errors.roomNumber && 'border-error-400'}`}
+                />
+                {errors.roomNumber && (
+                  <p className="text-error-500">{errors.roomNumber.message}</p>
+                )}
+              </div>
+            )}
           </div>
 
           <button
